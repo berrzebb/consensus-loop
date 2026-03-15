@@ -1,0 +1,11 @@
+# 프로젝트 특화 실사용 파일 — examples/ 에서 복사 후 수정하여 사용
+config.json
+templates/*.md
+feedback/
+/plans/
+
+
+# 자동 생성 상태 파일
+ack.timestamp
+session.id
+debug.log
