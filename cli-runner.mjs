@@ -1,4 +1,17 @@
 #!/usr/bin/env node
+/**
+ * Cross-platform CLI binary resolver and spawner.
+ *
+ * resolveBinary(command, envVarName)
+ *   Finds the absolute path to a CLI binary. Checks an optional env-var override
+ *   first, then searches PATH. On Windows, also probes PATHEXT extensions
+ *   (.exe, .cmd, .bat, …).
+ *
+ * spawnResolved(binary, args, options)
+ *   Wraps spawnSync with Windows-specific handling:
+ *   - .cmd/.bat → shell: true
+ *   - .ps1      → delegates to pwsh / powershell
+ */
 
 import { existsSync } from "node:fs";
 import { delimiter, extname, isAbsolute, join } from "node:path";

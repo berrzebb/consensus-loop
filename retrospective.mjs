@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * 자동 회고 스크립트.
+ * Automatic retrospective script.
  *
- * respond.mjs가 모든 감사 항목을 [합의완료]로 닫은 직후 호출됩니다.
- * 1. claude.md에서 최근 합의 완료 항목을 추출하여 맥락으로 제공합니다.
- * 2. retro-prompt.md 템플릿에 맥락을 주입합니다.
- * 3. claude -p로 회고를 실행합니다 (세 가지 질문 답변 + 개선 사항 구현).
- * 4. 회고 블록([GPT미검증] RX-N)이 claude.md에 추가됩니다.
- * 5. audit.mjs를 직접 호출하여 다음 감사 사이클을 시작합니다.
+ * Called by respond.mjs immediately after all audit items are closed as [agreed].
+ * 1. Extracts recently agreed items from the watch file and passes them as context.
+ * 2. Injects context into the retro-prompt.md template.
+ * 3. Runs the retrospective via `claude -p` (answers three questions + implements improvements).
+ * 4. A retrospective block ([trigger_tag] RX-N) is appended to the watch file.
+ * 5. Calls audit.mjs directly to start the next audit cycle.
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -26,7 +26,7 @@ const claudePathPlugin = resolve(__dirname, cfg.consensus.watch_file);
 const claudePathRepo   = resolve(repoRoot, cfg.consensus.watch_file);
 const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
 
-/** 기존 RX-N 항목 수를 세어 다음 ID를 결정합니다. */
+/** Counts existing RX-N entries to determine the next sequential retrospective ID. */
 function nextRetroId(claudeMd) {
   const matches = claudeMd.match(/\bRX-(\d+)\b/g) ?? [];
   const nums = matches.map((m) => parseInt(m.slice(3), 10));
@@ -34,7 +34,7 @@ function nextRetroId(claudeMd) {
   return `RX-${max + 1}`;
 }
 
-/** ## 합의완료 앵커 아래의 항목들을 추출합니다. */
+/** Extracts agreed items listed under the agreed_anchor section of the watch file. */
 function extractAgreedContext(claudeMd, agreedAnchor) {
   const lines = claudeMd.split(/\r?\n/);
   const anchorRe = new RegExp(`^##\\s+${agreedAnchor}\\s*$`);
@@ -44,7 +44,7 @@ function extractAgreedContext(claudeMd, agreedAnchor) {
   const end = lines.findIndex((l, i) => i > start && /^##\s+/.test(l.trim()));
   const section = (end < 0 ? lines.slice(start + 1) : lines.slice(start + 1, end))
     .filter((l) => l.trim().startsWith("- "))
-    .slice(-10); // 최근 10개만
+    .slice(-10); // last 10 entries only
 
   return section.length > 0 ? section.join("\n") : "(합의 완료 항목 없음)";
 }
@@ -77,7 +77,7 @@ function main() {
 
   console.log(t("retro.invoking", { rx_id: rxId }));
 
-  // FEEDBACK_LOOP_ACTIVE=1 — claude -p 자식 세션의 훅이 재귀적으로 발화하는 것을 방지합니다.
+  // FEEDBACK_LOOP_ACTIVE=1 — prevents the hook from firing recursively inside the child claude -p session.
   const claudeBin = resolveBinary("claude", "CLAUDE_BIN");
   const result = spawnResolved(claudeBin, ["-p"], {
     cwd: repoRoot,
@@ -93,7 +93,7 @@ function main() {
     return;
   }
 
-  // claude -p 실행 후 RX 항목이 실제로 추가되었는지 확인합니다.
+  // Verify that the RX entry was actually written to the watch file after claude -p completed.
   const claudeMdAfter = existsSync(claudePath) ? readFileSync(claudePath, "utf8") : "";
   if (!claudeMdAfter.includes(rxId)) {
     console.log(t("retro.no_rx_written", { rx_id: rxId }));
@@ -102,7 +102,7 @@ function main() {
 
   console.log(t("retro.done", { rx_id: rxId }));
 
-  // 다음 감사 사이클을 즉시 시작합니다.
+  // Immediately trigger the next audit cycle.
   const auditScript = resolve(__dirname, cfg.plugin.audit_script ?? "audit.mjs");
   if (existsSync(auditScript)) {
     console.log(t("retro.audit_trigger"));
