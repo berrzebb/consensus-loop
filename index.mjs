@@ -231,4 +231,8 @@ async function main() {
   check_pending_response();
 }
 
-main().catch((err) => log(`FATAL: ${err.message}`));
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => log(`FATAL: ${err.message}`));
+}
+
+export { find_respond_file };

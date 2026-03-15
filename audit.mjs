@@ -307,7 +307,12 @@ function buildPrompt(scopeText, promotionHint) {
   const promotionSection = buildPromotionSection(promotionHint);
   return template
     .split("{{SCOPE}}").join(scopeText)
-    .split("{{PROMOTION_SECTION}}").join(promotionSection);
+    .split("{{PROMOTION_SECTION}}").join(promotionSection)
+    .split("{{CLAUDE_MD_PATH}}").join(claudePath)
+    .split("{{GPT_MD_PATH}}").join(gptPath)
+    .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag)
+    .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
+    .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag);
 }
 
 function resolveCodexBin() {

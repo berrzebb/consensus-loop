@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process, console */
 
 /**
  * Automatic retrospective script.
@@ -54,6 +55,9 @@ function buildPrompt(templatePath, rxId, agreedItems) {
   tpl = tpl.replace(/\{\{CLAUDE_MD_PATH\}\}/g, claudePath);
   tpl = tpl.replace(/\{\{RX_ID\}\}/g, rxId);
   tpl = tpl.replace(/\{\{AGREED_ITEMS\}\}/g, agreedItems);
+  tpl = tpl.replace(/\{\{TRIGGER_TAG\}\}/g, cfg.consensus.trigger_tag);
+  tpl = tpl.replace(/\{\{AGREE_TAG\}\}/g, cfg.consensus.agree_tag);
+  tpl = tpl.replace(/\{\{PENDING_TAG\}\}/g, cfg.consensus.pending_tag);
   return tpl;
 }
 

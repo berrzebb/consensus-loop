@@ -882,9 +882,13 @@ function buildFixPrompt(corrections, gptMd) {
     .split("{{RESET_CRITERIA}}").join(resetCriteria.length > 0 ? resetCriteria.map((l) => `- ${l}`).join("\n") : none)
     .split("{{NEXT_TASKS}}").join(nextTasks.length > 0 ? nextTasks.map((l) => `- ${l}`).join("\n") : none)
     .split("{{GPT_MD}}").join(gptMd)
-    .split("{{WATCH_FILE}}").join(cfg.consensus.watch_file)
+    .split("{{WATCH_FILE}}").join(claudePath)
+    .split("{{CLAUDE_MD_PATH}}").join(claudePath)
     .split("{{RESPOND_FILE}}").join(gptPath)
-    .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag);
+    .split("{{GPT_MD_PATH}}").join(gptPath)
+    .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag)
+    .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
+    .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag);
 }
 
 function main() {
@@ -1076,10 +1080,14 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`feedback-respond failed: ${message}`);
-  process.exit(1);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`feedback-respond failed: ${message}`);
+    process.exit(1);
+  }
 }
+
+export { collectIdsFromLine };
