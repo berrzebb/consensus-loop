@@ -42,7 +42,7 @@ const claudePathRepo   = resolve(repoRoot, cfg.consensus.watch_file);
 const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
 const respondFile      = cfg.plugin.respond_file ?? "gpt.md";
 const gptPath          = resolve(dirname(claudePath), respondFile);
-const planningDirs     = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d));
+const planningDirs     = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d.replace(/^\/+/, "")));
 const watchFileDisplay = cfg.consensus.watch_file;
 const gptFileDisplay   = `${dirname(cfg.consensus.watch_file)}/${respondFile}`;
 const STATUS_TAG_RE = new RegExp(
