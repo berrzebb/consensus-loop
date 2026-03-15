@@ -24,6 +24,7 @@
     "planning_dirs": [
       ".claude/hooks/consensus-loop/plans/ko"
     ],
+    "design_docs_dir": "docs/ko/design/**",
     "sections": {
       "_readme": "Section headings used to parse your feedback files. Must match the actual ## headings you write.",
       "audit_scope":         "Audit Scope",

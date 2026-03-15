@@ -312,7 +312,8 @@ function buildPrompt(scopeText, promotionHint) {
     .split("{{GPT_MD_PATH}}").join(gptPath)
     .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag)
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
-    .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag);
+    .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
+    .split("{{DESIGN_DOCS_DIR}}").join(cfg.consensus.design_docs_dir ?? "docs/ko/design/**");
 }
 
 function resolveCodexBin() {

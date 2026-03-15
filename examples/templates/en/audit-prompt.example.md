@@ -10,6 +10,7 @@ Template variables injected by `audit.mjs`:
 - `{{TRIGGER_TAG}}` — tag that triggers an audit (e.g. `[REVIEW_NEEDED]`)
 - `{{AGREE_TAG}}` — tag for consensus reached (e.g. `[APPROVED]`)
 - `{{PENDING_TAG}}` — tag for items needing correction (e.g. `[CHANGES_REQUESTED]`)
+- `{{DESIGN_DOCS_DIR}}` — glob pattern for design documents that must not be modified (e.g. `docs/en/design/**`)
 
 ---
 
@@ -30,7 +31,7 @@ Procedure:
 3. Inspect the relevant code directly.
 4. Run lint and tests for changed files.
 5. Write verdicts only to `{{GPT_MD_PATH}}`.
-6. Do not modify design documents.
+6. Do not modify design documents (`{{DESIGN_DOCS_DIR}}`).
 
 Verdict rules:
 - `complete`: closed by code + lint + tests (or justified absence of tests)
