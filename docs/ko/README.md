@@ -15,41 +15,49 @@ consensus-loop/
 ├── index.mjs              ← PostToolUse 훅 진입점
 ├── audit.mjs              ← trigger_tag 감지 시 GPT/Codex 감사 실행
 ├── respond.mjs            ← claude.md ↔ gpt.md 동기화, 합의 항목 승격
+├── retrospective.mjs      ← 합의 완료 후 회고 실행 (claude -p)
 ├── cli-runner.mjs         ← CLI 바이너리 경로 해석 (Windows + Linux)
-├── config.json            ← 실사용 설정 (examples/plans/config.example.json 복사 후 수정)
+├── i18n.mjs               ← 로케일 헬퍼 (locales/*.json 로드, {var} 치환)
 │
-├── templates/             ← 활성 프롬프트 템플릿 (직접 수정하여 사용)
+├── locales/
+│   ├── en.json            ← 전체 스크립트 영문 UI 문자열
+│   └── ko.json            ← 한국어 UI 문자열
+│
+├── templates/             ← 활성 프롬프트 템플릿 (gitignored — 직접 수정하여 사용)
 │   ├── audit-prompt.md    ← 감사 시 GPT에게 전달되는 시스템 프롬프트
-│   └── fix-prompt.md      ← 반려 후 Claude에게 전달되는 수정 지시 프롬프트
-│
-├── feedback/              ← 실사용 피드백 파일 (consensus.watch_file로 참조)
-│   ├── claude.md          ← Claude가 작성; trigger_tag 존재 시 감사 실행
-│   └── gpt.md             ← GPT가 감사 결과를 작성하는 파일
+│   ├── fix-prompt.md      ← 반려 후 Claude에게 전달되는 수정 지시 프롬프트
+│   └── retro-prompt.md    ← 전체 합의 완료 후 Claude에게 전달되는 회고 프롬프트
 │
 ├── docs/
 │   ├── en/README.md       ← 영문 문서
 │   └── ko/README.md       ← 이 파일
 │
+├── tests/
+│   └── cl1-verify.test.mjs  ← CL-1 단위 테스트 (find_respond_file, singleRe)
+│
 ├── examples/              ← 참고 자료; 복사 후 수정하여 사용
+│   ├── config.example.json          ← 주석이 달린 전체 설정 레퍼런스
 │   ├── plans/
-│   │   ├── config.example.json          ← 주석이 달린 전체 설정 레퍼런스
 │   │   ├── en/
 │   │   │   ├── execution-order.example.md   ← 전체 트랙/마일스톤 실행 순서
 │   │   │   ├── work-catalog.example.md      ← 트랙/작업 카탈로그
 │   │   │   ├── work-breakdown.md            ← 항목 단위 분해 형식
 │   │   │   └── sample-track/
-│   │   │       └── README.example.md        ← 트랙별 설계 문서
 │   │   └── ko/                              ← 한국어 대응 파일
 │   └── templates/
 │       ├── en/
 │       │   ├── audit-prompt.example.md  ← audit-prompt.md 시작점
-│       │   └── fix-prompt.example.md    ← fix-prompt.md 시작점
+│       │   ├── fix-prompt.example.md    ← fix-prompt.md 시작점
+│       │   └── retro-prompt.example.md  ← retro-prompt.md 시작점
 │       └── ko/                          ← 한국어 대응 파일
 │
-└── (자동 생성 상태 파일 — 수정 금지)
-    ├── ack.timestamp      ← GPT ack 중복 방지 가드
-    ├── session.id         ← 현재 Claude 세션 ID
-    └── debug.log          ← 훅 실행 로그
+└── (프로젝트 특화 — gitignored)
+    ├── config.json        ← 실사용 설정 (examples/config.example.json 복사 후 수정)
+    ├── feedback/          ← 실사용 피드백 파일 (claude.md, gpt.md)
+    ├── plans/             ← 활성 플래닝 문서
+    ├── ack.timestamp      ← GPT ack 중복 방지 가드 (자동 생성)
+    ├── session.id         ← 현재 Claude 세션 ID (자동 생성)
+    └── debug.log          ← 훅 실행 로그 (자동 생성)
 ```
 
 ---
@@ -83,7 +91,7 @@ PostToolUse (임의 파일 편집)
         │       └─→ respond.mjs  (gpt.md 파싱, claude.md 태그 승격/강등)
         │
         ├─ 플래닝 파일 편집?
-        │       └─→ audit.mjs --planning  (정규화 패스만 실행)
+        │       └─→ respond.mjs --gpt-only  (정규화 패스만 실행)
         │
         └─ quality_rule 조건과 편집 파일 일치?
                 └─→ 설정된 명령 실행 (ESLint, npm audit, …)
@@ -114,7 +122,7 @@ cp -r consensus-loop  <your-repo>/.claude/hooks/
 **3. config 복사 후 수정:**
 
 ```
-cp examples/plans/config.example.json config.json
+cp examples/config.example.json config.json
 ```
 
 `consensus.watch_file`, `consensus.trigger_tag`, `consensus.agree_tag`, `consensus.pending_tag`, `consensus.planning_dirs`를 프로젝트에 맞게 수정한다.
@@ -124,6 +132,7 @@ cp examples/plans/config.example.json config.json
 ```
 cp examples/templates/ko/audit-prompt.example.md templates/audit-prompt.md
 cp examples/templates/ko/fix-prompt.example.md   templates/fix-prompt.md
+cp examples/templates/ko/retro-prompt.example.md templates/retro-prompt.md
 ```
 
 ---
@@ -134,24 +143,29 @@ cp examples/templates/ko/fix-prompt.example.md   templates/fix-prompt.md
 {
   "plugin": {
     // 파일명만 — 플러그인 디렉토리 기준으로 해석
-    "audit_script":  "audit.mjs",
-    "audit_prompt":  "templates/audit-prompt.md",
-    "respond_script": "respond.mjs",
-    "ack_file":      "ack.timestamp",
-    "session_file":  "session.id",
-    "debug_log":     "debug.log",
-    "fix_prompt":    "templates/fix-prompt.md"
+    "locale":          "ko",
+    "audit_script":    "audit.mjs",
+    "audit_prompt":    "templates/audit-prompt.md",
+    "respond_script":  "respond.mjs",
+    "fix_prompt":      "templates/fix-prompt.md",
+    "respond_file":    "gpt.md",
+    "retro_script":    "retrospective.mjs",
+    "retro_prompt":    "templates/retro-prompt.md",
+    "ack_file":        "ack.timestamp",
+    "session_file":    "session.id",
+    "debug_log":       "debug.log"
   },
   "consensus": {
     // 레포 루트 기준 경로
-    "watch_file":    "feedback/claude.md",   // Claude 파일; 편집이 루프를 구동
-    "trigger_tag":   "[GPT미검증]",           // 감사를 트리거하는 태그
-    "agree_tag":     "[합의완료]",             // 합의 완료를 표시하는 태그
-    "pending_tag":   "[계류]",                // 보류 항목을 표시하는 태그
-    "planning_files": [],                    // 명시적 파일 목록 (레포 루트 기준)
-    "planning_dirs":  [                      // 이 디렉토리 하위 모든 파일이 플래닝 문서
-      ".claude/hooks/consensus-loop/plans/ko"
-    ]
+    "watch_file":      "feedback/claude.md",   // Claude 파일; 편집이 루프를 구동
+    "trigger_tag":     "[GPT미검증]",           // 감사를 트리거하는 태그
+    "agree_tag":       "[합의완료]",             // 합의 완료를 표시하는 태그
+    "pending_tag":     "[계류]",                // 보류 항목을 표시하는 태그
+    "planning_files":  [],                      // 명시적 파일 목록 (레포 루트 기준)
+    "planning_dirs":   ["docs/ko/design/improved"], // leading slash 금지 — 레포 루트 기준
+    "design_docs_dir": "docs/ko/design/**",     // 수정 금지 설계 문서 glob 패턴
+    "sections": { /* 피드백 파일의 ## 제목 이름 — examples/config.example.json 참조 */ },
+    "doc_patterns":  { /* 섹션 작성 시 사용하는 텍스트 — examples/config.example.json 참조 */ }
   },
   "quality_rules": [
     {
@@ -186,18 +200,45 @@ plans/                         ← 레포 스코프 플래닝 디렉토리 (plan
 
 ## 프롬프트 템플릿 변수
 
-`templates/audit-prompt.md`와 `templates/fix-prompt.md`에서 사용 가능한 플레이스홀더:
+**`templates/audit-prompt.md`** — `audit.mjs`가 주입:
+
+| 변수 | 치환 내용 |
+|---|---|
+| `{{SCOPE}}` | 감사 범위 (자동 감지 또는 `--scope` 오버라이드) |
+| `{{PROMOTION_SECTION}}` | 다음 승격 후보 블록 (없으면 빈 문자열) |
+| `{{CLAUDE_MD_PATH}}` | `watch_file` 절대경로 |
+| `{{GPT_MD_PATH}}` | `gpt.md` 절대경로 |
+| `{{TRIGGER_TAG}}` | `consensus.trigger_tag` 값 |
+| `{{AGREE_TAG}}` | `consensus.agree_tag` 값 |
+| `{{PENDING_TAG}}` | `consensus.pending_tag` 값 |
+| `{{DESIGN_DOCS_DIR}}` | `consensus.design_docs_dir` 값 |
+
+**`templates/fix-prompt.md`** — `respond.mjs`가 주입:
 
 | 변수 | 치환 내용 |
 |---|---|
 | `{{CORRECTIONS}}` | GPT 수정 사항 불릿 목록 |
-| `{{REJECT_CODES}}` | gpt.md의 반려 코드 |
-| `{{RESET_CRITERIA}}` | gpt.md의 완료 기준 재고정 |
-| `{{NEXT_TASKS}}` | gpt.md의 다음 작업 목록 |
-| `{{GPT_MD}}` | gpt.md 전체 원문 |
-| `{{WATCH_FILE}}` | `consensus.watch_file` 경로 |
-| `{{RESPOND_FILE}}` | gpt.md 경로 |
+| `{{REJECT_CODES}}` | `gpt.md`의 반려 코드 |
+| `{{RESET_CRITERIA}}` | `gpt.md`의 완료 기준 재고정 |
+| `{{NEXT_TASKS}}` | `gpt.md`의 다음 작업 목록 |
+| `{{GPT_MD}}` | `gpt.md` 전체 원문 |
+| `{{CLAUDE_MD_PATH}}` | `watch_file` 절대경로 (`{{WATCH_FILE}}`도 동일) |
+| `{{GPT_MD_PATH}}` | `gpt.md` 절대경로 (`{{RESPOND_FILE}}`도 동일) |
 | `{{TRIGGER_TAG}}` | `consensus.trigger_tag` 값 |
+| `{{AGREE_TAG}}` | `consensus.agree_tag` 값 |
+| `{{PENDING_TAG}}` | `consensus.pending_tag` 값 |
+| `{{DESIGN_DOCS_DIR}}` | `consensus.design_docs_dir` 값 |
+
+**`templates/retro-prompt.md`** — `retrospective.mjs`가 주입:
+
+| 변수 | 치환 내용 |
+|---|---|
+| `{{CLAUDE_MD_PATH}}` | `watch_file` 절대경로 |
+| `{{RX_ID}}` | 회고 식별자 (예: `RX-003`) |
+| `{{AGREED_ITEMS}}` | 방금 `agree_tag`에 도달한 항목 목록 |
+| `{{TRIGGER_TAG}}` | `consensus.trigger_tag` 값 |
+| `{{AGREE_TAG}}` | `consensus.agree_tag` 값 |
+| `{{PENDING_TAG}}` | `consensus.pending_tag` 값 |
 
 ---
 
