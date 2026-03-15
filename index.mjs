@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process, Buffer */
 /**
  * PostToolUse hook: tag-based consensus loop + code quality auto-checks.
  *

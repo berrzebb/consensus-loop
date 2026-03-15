@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process, console */
 
 /**
  * GPT → Claude direction: auto-sync gpt.md verdicts into claude.md.
