@@ -25,7 +25,7 @@ const promptTemplatePath = resolve(__dirname, cfg.plugin.audit_prompt);
 const claudePathPlugin   = resolve(__dirname, cfg.consensus.watch_file);
 const claudePathRepo     = resolve(repoRoot, cfg.consensus.watch_file);
 const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
-const gptPath    = resolve(dirname(claudePath), "gpt.md");
+const gptPath    = resolve(dirname(claudePath), cfg.plugin.respond_file ?? "gpt.md");
 const sessionPath = resolve(__dirname, cfg.plugin.session_file);
 const planningDirs = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d));
 const promotionDocPaths = planningDirs.map((d) => resolve(d, "feedback-promotion.md"));

@@ -62,6 +62,7 @@
   "respond.retro.all_clear": "\n모든 감사 항목이 합의완료 — 자동 회고를 트리거합니다 ({rx_id}).\n",
   "respond.retro.skipped_is_retro": "직전 합의 항목이 회고({rx_id})이므로 자동 회고를 건너뜁니다.",
   "respond.retro.skipped_no_script": "retro_script가 설정되지 않아 자동 회고를 건너뜁니다.",
+  "retro.no_agreed_items": "(합의 완료 항목 없음)",
   "retro.invoking": "[retro] claude -p로 회고를 실행합니다 ({rx_id})...",
   "retro.done": "[retro] 완료: {rx_id} 항목이 claude.md에 추가되었습니다.",
   "retro.audit_trigger": "[retro] 다음 감사 사이클을 시작합니다...",
@@ -72,6 +73,7 @@
 
   "pdoc.none_item": "- 없음",
   "pdoc.no_promotion_target": "- 현재 승격할 다음 작업 없음",
+  "pdoc.no_next_task": "현재 등록된 다음 작업 없음",
   "pdoc.close_task": "{label}를 닫기",
   "pdoc.close_tasks": "{head}와 {last}를 닫기"
 }

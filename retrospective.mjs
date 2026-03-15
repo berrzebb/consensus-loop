@@ -39,14 +39,14 @@ function extractAgreedContext(claudeMd, agreedAnchor) {
   const lines = claudeMd.split(/\r?\n/);
   const anchorRe = new RegExp(`^##\\s+${agreedAnchor}\\s*$`);
   const start = lines.findIndex((l) => anchorRe.test(l.trim()));
-  if (start < 0) return "(합의 완료 항목 없음)";
+  if (start < 0) return t("retro.no_agreed_items");
 
   const end = lines.findIndex((l, i) => i > start && /^##\s+/.test(l.trim()));
   const section = (end < 0 ? lines.slice(start + 1) : lines.slice(start + 1, end))
     .filter((l) => l.trim().startsWith("- "))
     .slice(-10); // last 10 entries only
 
-  return section.length > 0 ? section.join("\n") : "(합의 완료 항목 없음)";
+  return section.length > 0 ? section.join("\n") : t("retro.no_agreed_items");
 }
 
 function buildPrompt(templatePath, rxId, agreedItems) {

@@ -62,6 +62,7 @@
   "respond.retro.all_clear": "\nAll audit items resolved — triggering auto retrospective ({rx_id}).\n",
   "respond.retro.skipped_is_retro": "Last synced item was a retrospective ({rx_id}) — skipping auto retrospective.",
   "respond.retro.skipped_no_script": "retro_script not configured — skipping auto retrospective.",
+  "retro.no_agreed_items": "(no agreed items)",
   "retro.invoking": "[retro] Running retrospective via claude -p ({rx_id})...",
   "retro.done": "[retro] Done: {rx_id} entry added to claude.md.",
   "retro.audit_trigger": "[retro] Starting next audit cycle...",
@@ -72,6 +73,7 @@
 
   "pdoc.none_item": "- none",
   "pdoc.no_promotion_target": "- no remaining promotion target",
+  "pdoc.no_next_task": "no next task registered",
   "pdoc.close_task": "close {label}",
   "pdoc.close_tasks": "close {head} and {last}"
 }

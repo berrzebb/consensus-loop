@@ -39,10 +39,11 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const claudePathPlugin = resolve(__dirname, cfg.consensus.watch_file);
 const claudePathRepo   = resolve(repoRoot, cfg.consensus.watch_file);
 const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
-const gptPath    = resolve(dirname(claudePath), "gpt.md");
-const planningDirs = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d));
+const respondFile      = cfg.plugin.respond_file ?? "gpt.md";
+const gptPath          = resolve(dirname(claudePath), respondFile);
+const planningDirs     = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d));
 const watchFileDisplay = cfg.consensus.watch_file;
-const gptFileDisplay   = `${dirname(cfg.consensus.watch_file)}/gpt.md`;
+const gptFileDisplay   = `${dirname(cfg.consensus.watch_file)}/${respondFile}`;
 const STATUS_TAG_RE = new RegExp(
   `\\[(${[agreeInner, pendingInner, triggerInner].map(escapeRe).join("|")})(?:[^\\]]*?)\\]`,
 );
@@ -468,7 +469,7 @@ function syncGptNextTaskWithPromotion(gptMd, claudeMd, state) {
     state?.nextStage?.next_task_ko ??
     state?.nextStage?.next_task_en ??
     activeAuditTask ??
-    `\`${D.no_next_task ?? "현재 등록된 다음 작업 없음"}\``;
+    `\`${D.no_next_task ?? t("pdoc.no_next_task")}\``;
 
   if (!nextTask) {
     return { updated: gptMd, changed: false };
@@ -871,7 +872,7 @@ function buildFixPrompt(corrections, gptMd) {
   const rejectCodes = readBulletSection(gptMd, SEC.rejectCodes);
   const resetCriteria = readBulletSection(gptMd, SEC.resetCriteria);
   const nextTasks = readBulletSection(gptMd, SEC.nextTask);
-  const none = D.none_item ?? "- 없음";
+  const none = D.none_item ?? t("pdoc.none_item");
 
   const template = readFileSync(resolve(__dirname, cfg.plugin.fix_prompt), "utf8");
   return template
@@ -1039,7 +1040,7 @@ function main() {
     }
   }
 
-  // 모든 감사 항목이 합의완료이고 직전 합의 항목이 회고가 아닌 경우 자동 회고를 트리거합니다.
+  // Trigger auto-retrospective only when all audit items are agreed and the last synced item was not a retrospective.
   if (synced.length > 0 && corrections.length === 0 && !args.dryRun) {
     const retroScript = cfg.plugin.retro_script;
     if (!retroScript) {
