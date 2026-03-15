@@ -27,8 +27,9 @@ The consensus loop makes this discipline automatic rather than voluntary.
 | **Consensus loop** | `trigger_tag` in `watch_file` → runs `audit_script` → waits for `agree_tag` |
 | **Auto-sync** | When `gpt.md` is newer than `watch_file`, `respond_script` promotes/demotes tags automatically |
 | **Quality gates** | On every file edit, matching `quality_rules` run inline (ESLint, npm audit, …) |
-| **Planning normalization** | Edits to `planning_dirs` files trigger a GPT normalize pass without a full audit |
-| **Retrospective** | After all items reach `agree_tag`, `retrospective.mjs` runs a three-question reflection cycle |
+| **Planning normalization** | Edits to `planning_dirs` files call `respond.mjs --gpt-only` to normalize `gpt.md` without a full audit |
+| **Retrospective** | After all items reach `agree_tag`, `retrospective.mjs` runs a three-question reflection cycle and appends findings to `watch_file` |
+| **Next-task engine** | `respond.mjs` reads `planning_dirs/*/work-breakdown.md` to auto-populate `## Next Task` in `gpt.md` |
 
 ---
 
@@ -40,9 +41,9 @@ consensus-loop/
 ├── index.mjs              ← PostToolUse hook entry point
 ├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag is detected
 ├── respond.mjs            ← Syncs gpt.md → claude.md; promotes/demotes status tags
+├── retrospective.mjs      ← Post-consensus retrospective runner (claude -p)
 ├── cli-runner.mjs         ← Cross-platform binary resolver (Windows + Linux)
 ├── i18n.mjs               ← Locale helper (loads locales/*.json, {var} substitution)
-├── retrospective.mjs      ← Post-consensus retrospective runner (claude -p)
 │
 ├── locales/
 │   ├── en.json            ← English UI strings for all scripts
@@ -52,18 +53,21 @@ consensus-loop/
 │   ├── en/README.md       ← Full plugin reference (English)
 │   └── ko/README.md       ← Full plugin reference (Korean)
 │
+├── tests/
+│   └── cl1-verify.test.mjs  ← CL-1 unit tests (find_respond_file, singleRe)
+│
 ├── examples/
+│   ├── config.example.json        ← Annotated full config reference
 │   ├── plans/
-│   │   ├── config.example.json        ← Annotated full config reference
-│   │   ├── en/                        ← Example planning document structure
-│   │   └── ko/                        ← Korean equivalents
+│   │   ├── en/                    ← Example planning document structure
+│   │   └── ko/                    ← Korean equivalents
 │   └── templates/
-│       ├── en/                        ← Starting points for audit-prompt.md / fix-prompt.md
+│       ├── en/                    ← Starting points for audit / fix / retro prompts
 │       └── ko/
 │
 └── (project-specific — gitignored)
-    ├── config.json        ← Your live config (copy from examples/plans/config.example.json)
-    ├── templates/         ← Your active prompt templates
+    ├── config.json        ← Your live config (copy from examples/config.example.json)
+    ├── templates/         ← Your active prompt templates (audit-prompt.md, fix-prompt.md, retro-prompt.md)
     ├── feedback/          ← Your live feedback files (claude.md, gpt.md)
     ├── plans/             ← Your active planning documents
     ├── ack.timestamp      ← GPT ack dedup guard (auto-generated)
@@ -205,7 +209,7 @@ cp -r consensus-loop  <your-repo>/.claude/hooks/
 **3. Copy and edit config:**
 
 ```
-cp .claude/hooks/consensus-loop/examples/plans/config.example.json \
+cp .claude/hooks/consensus-loop/examples/config.example.json \
    .claude/hooks/consensus-loop/config.json
 ```
 
@@ -219,6 +223,9 @@ cp .claude/hooks/consensus-loop/examples/templates/en/audit-prompt.example.md \
 
 cp .claude/hooks/consensus-loop/examples/templates/en/fix-prompt.example.md \
    .claude/hooks/consensus-loop/templates/fix-prompt.md
+
+cp .claude/hooks/consensus-loop/examples/templates/en/retro-prompt.example.md \
+   .claude/hooks/consensus-loop/templates/retro-prompt.md
 ```
 
 ---
@@ -228,23 +235,36 @@ cp .claude/hooks/consensus-loop/examples/templates/en/fix-prompt.example.md \
 ```jsonc
 {
   "plugin": {
-    "locale":         "en",              // "en" or "ko"
-    "audit_script":   "audit.mjs",       // relative to plugin dir
-    "audit_prompt":   "templates/audit-prompt.md",
-    "respond_script": "respond.mjs",
-    "ack_file":       "ack.timestamp",
-    "session_file":   "session.id",
-    "debug_log":      "debug.log",
-    "fix_prompt":     "templates/fix-prompt.md",
-    "respond_file":   "gpt.md"           // auditor output filename
+    "locale":          "en",                         // "en" or "ko"
+    "audit_script":    "audit.mjs",                  // relative to plugin dir
+    "audit_prompt":    "templates/audit-prompt.md",
+    "respond_script":  "respond.mjs",
+    "fix_prompt":      "templates/fix-prompt.md",
+    "respond_file":    "gpt.md",                     // auditor output filename
+    "retro_script":    "retrospective.mjs",
+    "retro_prompt":    "templates/retro-prompt.md",
+    "ack_file":        "ack.timestamp",
+    "session_file":    "session.id",
+    "debug_log":       "debug.log"
   },
   "consensus": {
-    "watch_file":     "feedback/claude.md",  // repo-root relative
-    "trigger_tag":    "[GPT미검증]",
-    "agree_tag":      "[합의완료]",
-    "pending_tag":    "[계류]",
-    "planning_files": [],                    // explicit file list
-    "planning_dirs":  [".claude/hooks/consensus-loop/plans/ko"]
+    "watch_file":      "feedback/claude.md",         // repo-root relative
+    "trigger_tag":     "[GPT미검증]",
+    "agree_tag":       "[합의완료]",
+    "pending_tag":     "[계류]",
+    "planning_files":  [],                           // explicit file list (repo-root relative)
+    "planning_dirs":   ["docs/ko/design/improved"],  // no leading slash — repo-root relative
+    "design_docs_dir": "docs/ko/design/**",          // glob for read-only design docs
+    "sections": {                                    // ## heading names in your feedback files
+      "audit_scope":   "감사 범위",
+      "final_verdict": "최종 판정",
+      "next_task":     "다음 작업"
+      // ... see examples/config.example.json for all keys
+    },
+    "doc_patterns": {                                // regex / text fragments used when writing sections
+      "no_next_task":  "현재 등록된 다음 작업 없음"
+      // ... see examples/config.example.json for all keys
+    }
   },
   "quality_rules": [
     {
@@ -274,6 +294,50 @@ The tags and file names are fully configurable. Example for an English-language 
   "pending_tag": "[CHANGES_REQUESTED]"
 }
 ```
+
+---
+
+## Environment Variables
+
+**`templates/audit-prompt.md`** — injected by `audit.mjs`:
+
+| Variable | Resolved to |
+|---|---|
+| `{{SCOPE}}` | Audit scope (auto-detected or `--scope` override) |
+| `{{PROMOTION_SECTION}}` | Next promotion candidate block (empty if none) |
+| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` |
+| `{{GPT_MD_PATH}}` | Absolute path to `gpt.md` |
+| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
+| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
+| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
+| `{{DESIGN_DOCS_DIR}}` | Value of `consensus.design_docs_dir` |
+
+**`templates/fix-prompt.md`** — injected by `respond.mjs`:
+
+| Variable | Resolved to |
+|---|---|
+| `{{CORRECTIONS}}` | Bullet list of GPT corrections |
+| `{{REJECT_CODES}}` | Rejection reason codes from `gpt.md` |
+| `{{RESET_CRITERIA}}` | Reset criteria from `gpt.md` |
+| `{{NEXT_TASKS}}` | Next task list from `gpt.md` |
+| `{{GPT_MD}}` | Full raw content of `gpt.md` |
+| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` (also `{{WATCH_FILE}}`) |
+| `{{GPT_MD_PATH}}` | Absolute path to `gpt.md` (also `{{RESPOND_FILE}}`) |
+| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
+| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
+| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
+| `{{DESIGN_DOCS_DIR}}` | Value of `consensus.design_docs_dir` |
+
+**`templates/retro-prompt.md`** — injected by `retrospective.mjs`:
+
+| Variable | Resolved to |
+|---|---|
+| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` |
+| `{{RX_ID}}` | Retrospective identifier (e.g. `RX-003`) |
+| `{{AGREED_ITEMS}}` | List of items that just reached `agree_tag` |
+| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
+| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
+| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
 
 ---
 

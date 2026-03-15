@@ -15,41 +15,49 @@ consensus-loop/
 ├── index.mjs              ← PostToolUse hook entry point
 ├── audit.mjs              ← runs GPT/Codex audit when trigger_tag detected
 ├── respond.mjs            ← syncs claude.md ↔ gpt.md, promotes agreed items
+├── retrospective.mjs      ← post-consensus retrospective runner (claude -p)
 ├── cli-runner.mjs         ← resolves CLI binary paths (Windows + Linux)
-├── config.json            ← your live config (copy from examples/plans/config.example.json)
+├── i18n.mjs               ← locale helper (loads locales/*.json, {var} substitution)
 │
-├── templates/             ← active prompt templates (edit to customize)
+├── locales/
+│   ├── en.json            ← English UI strings for all scripts
+│   └── ko.json            ← Korean UI strings
+│
+├── templates/             ← active prompt templates (gitignored — edit to customize)
 │   ├── audit-prompt.md    ← system prompt sent to GPT during audit
-│   └── fix-prompt.md      ← fix instruction sent to Claude after rejection
-│
-├── feedback/              ← live feedback files (repo-scoped via consensus.watch_file)
-│   ├── claude.md          ← Claude writes here; trigger_tag here fires audit
-│   └── gpt.md             ← GPT writes audit results here
+│   ├── fix-prompt.md      ← fix instruction sent to Claude after rejection
+│   └── retro-prompt.md    ← reflection prompt sent to Claude after full consensus
 │
 ├── docs/
 │   ├── en/README.md       ← this file
 │   └── ko/README.md       ← Korean version
 │
+├── tests/
+│   └── cl1-verify.test.mjs  ← CL-1 unit tests (find_respond_file, singleRe)
+│
 ├── examples/              ← reference material; copy and adapt
+│   ├── config.example.json          ← full annotated config reference
 │   ├── plans/
-│   │   ├── config.example.json          ← full annotated config reference
 │   │   ├── en/
 │   │   │   ├── execution-order.example.md   ← global task execution order
 │   │   │   ├── work-catalog.example.md      ← track/task catalog
 │   │   │   ├── work-breakdown.md            ← item-level breakdown format
 │   │   │   └── sample-track/
-│   │   │       └── README.example.md        ← per-track design document
 │   │   └── ko/                              ← Korean equivalents
 │   └── templates/
 │       ├── en/
 │       │   ├── audit-prompt.example.md  ← starting point for audit-prompt.md
-│       │   └── fix-prompt.example.md    ← starting point for fix-prompt.md
+│       │   ├── fix-prompt.example.md    ← starting point for fix-prompt.md
+│       │   └── retro-prompt.example.md  ← starting point for retro-prompt.md
 │       └── ko/                          ← Korean equivalents
 │
-└── (auto-generated state files — do not edit)
-    ├── ack.timestamp      ← GPT ack dedup guard
-    ├── session.id         ← current Claude session ID
-    └── debug.log          ← hook run log
+└── (project-specific — gitignored)
+    ├── config.json        ← your live config (copy from examples/config.example.json)
+    ├── feedback/          ← your live feedback files (claude.md, gpt.md)
+    ├── plans/             ← your active planning documents
+    ├── ack.timestamp      ← GPT ack dedup guard (auto-generated)
+    ├── session.id         ← current Claude session ID (auto-generated)
+    └── debug.log          ← hook run log (auto-generated)
 ```
 
 ---
@@ -83,7 +91,7 @@ PostToolUse (any file edit)
         │       └─→ respond.mjs  (parse gpt.md, promote/demote tags in claude.md)
         │
         ├─ planning file edited?
-        │       └─→ audit.mjs --planning  (normalize pass only)
+        │       └─→ respond.mjs --gpt-only  (normalize pass only)
         │
         └─ quality rule matches edited file?
                 └─→ run configured command (ESLint, npm audit, …)
@@ -114,7 +122,7 @@ cp -r consensus-loop  <your-repo>/.claude/hooks/
 **3. Copy and edit config:**
 
 ```
-cp examples/plans/config.example.json config.json
+cp examples/config.example.json config.json
 ```
 
 Adjust `consensus.watch_file`, `consensus.trigger_tag`, `consensus.agree_tag`, `consensus.pending_tag`, and `consensus.planning_dirs` for your project.
@@ -124,6 +132,7 @@ Adjust `consensus.watch_file`, `consensus.trigger_tag`, `consensus.agree_tag`, `
 ```
 cp examples/templates/en/audit-prompt.example.md templates/audit-prompt.md
 cp examples/templates/en/fix-prompt.example.md   templates/fix-prompt.md
+cp examples/templates/en/retro-prompt.example.md templates/retro-prompt.md
 ```
 
 ---
@@ -134,24 +143,29 @@ cp examples/templates/en/fix-prompt.example.md   templates/fix-prompt.md
 {
   "plugin": {
     // Filenames only — resolved relative to the plugin directory
-    "audit_script":  "audit.mjs",
-    "audit_prompt":  "templates/audit-prompt.md",
-    "respond_script": "respond.mjs",
-    "ack_file":      "ack.timestamp",
-    "session_file":  "session.id",
-    "debug_log":     "debug.log",
-    "fix_prompt":    "templates/fix-prompt.md"
+    "locale":          "en",
+    "audit_script":    "audit.mjs",
+    "audit_prompt":    "templates/audit-prompt.md",
+    "respond_script":  "respond.mjs",
+    "fix_prompt":      "templates/fix-prompt.md",
+    "respond_file":    "gpt.md",
+    "retro_script":    "retrospective.mjs",
+    "retro_prompt":    "templates/retro-prompt.md",
+    "ack_file":        "ack.timestamp",
+    "session_file":    "session.id",
+    "debug_log":       "debug.log"
   },
   "consensus": {
     // Repo-scoped paths — resolved relative to the repository root
-    "watch_file":    "feedback/claude.md",   // Claude's file; edits here drive the loop
-    "trigger_tag":   "[GPT미검증]",           // tag that fires audit
-    "agree_tag":     "[합의완료]",             // tag that marks consensus reached
-    "pending_tag":   "[계류]",                // tag that marks item on hold
-    "planning_files": [],                    // explicit file list (repo-root relative)
-    "planning_dirs":  [                      // all files under these dirs count as planning docs
-      ".claude/hooks/consensus-loop/plans/ko"
-    ]
+    "watch_file":      "feedback/claude.md",   // Claude's file; edits here drive the loop
+    "trigger_tag":     "[REVIEW_NEEDED]",       // tag that fires audit
+    "agree_tag":       "[APPROVED]",            // tag that marks consensus reached
+    "pending_tag":     "[CHANGES_REQUESTED]",   // tag that marks item on hold
+    "planning_files":  [],                      // explicit file list (repo-root relative)
+    "planning_dirs":   ["docs/en/design/improved"], // no leading slash — repo-root relative
+    "design_docs_dir": "docs/en/design/**",     // glob for read-only design docs
+    "sections": { /* heading names in your feedback files — see config.example.json */ },
+    "doc_patterns":  { /* text fragments used when writing sections — see config.example.json */ }
   },
   "quality_rules": [
     {
@@ -186,18 +200,45 @@ The hook treats every file under `planning_dirs` as a planning document — edit
 
 ## Prompt Template Variables
 
-`templates/audit-prompt.md` and `templates/fix-prompt.md` support these placeholders:
+**`templates/audit-prompt.md`** — injected by `audit.mjs`:
+
+| Variable | Resolved to |
+|---|---|
+| `{{SCOPE}}` | Audit scope (auto-detected or `--scope` override) |
+| `{{PROMOTION_SECTION}}` | Next promotion candidate block (empty if none) |
+| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` |
+| `{{GPT_MD_PATH}}` | Absolute path to `gpt.md` |
+| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
+| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
+| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
+| `{{DESIGN_DOCS_DIR}}` | Value of `consensus.design_docs_dir` |
+
+**`templates/fix-prompt.md`** — injected by `respond.mjs`:
 
 | Variable | Resolved to |
 |---|---|
 | `{{CORRECTIONS}}` | Bullet list of GPT corrections |
-| `{{REJECT_CODES}}` | Rejection reason codes from gpt.md |
-| `{{RESET_CRITERIA}}` | Reset criteria from gpt.md |
-| `{{NEXT_TASKS}}` | Next task list from gpt.md |
-| `{{GPT_MD}}` | Full raw content of gpt.md |
-| `{{WATCH_FILE}}` | Path of `consensus.watch_file` |
-| `{{RESPOND_FILE}}` | Path of gpt.md |
+| `{{REJECT_CODES}}` | Rejection reason codes from `gpt.md` |
+| `{{RESET_CRITERIA}}` | Reset criteria from `gpt.md` |
+| `{{NEXT_TASKS}}` | Next task list from `gpt.md` |
+| `{{GPT_MD}}` | Full raw content of `gpt.md` |
+| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` (also `{{WATCH_FILE}}`) |
+| `{{GPT_MD_PATH}}` | Absolute path to `gpt.md` (also `{{RESPOND_FILE}}`) |
 | `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
+| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
+| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
+| `{{DESIGN_DOCS_DIR}}` | Value of `consensus.design_docs_dir` |
+
+**`templates/retro-prompt.md`** — injected by `retrospective.mjs`:
+
+| Variable | Resolved to |
+|---|---|
+| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` |
+| `{{RX_ID}}` | Retrospective identifier (e.g. `RX-003`) |
+| `{{AGREED_ITEMS}}` | List of items that just reached `agree_tag` |
+| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
+| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
+| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
 
 ---
 
