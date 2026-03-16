@@ -6,7 +6,7 @@
 
 1. **Claim** — 무엇을 했는가 (간결하게)
 2. **Changed Files** — 수정한 코드/테스트 파일 전체 목록
-3. **Test Command** — 그대로 복붙하여 재현 가능한 명시 파일 목록 (glob 금지, lint 명령 포함 필수)
+3. **Test Command** — **변경 파일 관련 테스트만** 기재 (glob 금지, lint 명령 포함 필수). 전체 테스트는 CI 역할이므로 포함하지 않음.
 4. **Test Result** — 터미널 출력 복붙 (추정/반올림 금지, lint 통과 여부 포함 필수)
 5. **Residual Risk** — 닫지 못한 것 (공격자 악용 가능하면 수정 대상이지 Residual이 아님)
 

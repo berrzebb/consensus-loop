@@ -6,7 +6,7 @@
 
 1. **Claim** — What was done (concise)
 2. **Changed Files** — Full list of modified code/test files
-3. **Test Command** — Exact command, copy-pasteable (no globs, must include lint command)
+3. **Test Command** — **Only tests related to changed files** (no globs, must include lint command). Full test suite is CI's responsibility, not evidence scope.
 4. **Test Result** — Terminal output copy-paste (no estimates/rounding, must include lint pass/fail)
 5. **Residual Risk** — What remains open (if exploitable by attacker, it's a fix target, not residual)
 
