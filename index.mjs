@@ -30,6 +30,45 @@ function log(msg) {
 const find_watch_file = findWatchFile;
 const find_respond_file = findRespondFile;
 
+/** 증거 패키지 형식 사전 검증 — 정규식 기반, 토큰 0. */
+function validate_evidence_format(content) {
+  const errors = [];
+  const triggerSection = content.split(/^## /m).find((s) => s.includes(c.trigger_tag));
+  if (!triggerSection) return errors; // trigger 섹션 자체가 없으면 검증 대상 아님
+
+  const required = [
+    { label: "Claim", pattern: /### Claim/i },
+    { label: "Changed Files", pattern: /### Changed Files/i },
+    { label: "Test Command", pattern: /### Test Command/i },
+    { label: "Test Result", pattern: /### Test Result/i },
+    { label: "Residual Risk", pattern: /### Residual Risk/i },
+  ];
+
+  for (const { label, pattern } of required) {
+    if (!pattern.test(triggerSection)) {
+      errors.push(`[FORMAT_MISSING_SECTION] '### ${label}' 섹션이 없습니다.`);
+    }
+  }
+
+  // Test Command에 glob 사용 여부
+  if (/### Test Command/.test(triggerSection)) {
+    const cmdSection = triggerSection.split(/### Test Command/i)[1]?.split(/### /)[0] || "";
+    if (/\*\*?\/|\*\.\w+/.test(cmdSection)) {
+      errors.push("[FORMAT_GLOB_IN_TEST] Test Command에 glob 패턴이 포함되어 있습니다. 명시적 파일 목록을 사용하세요.");
+    }
+  }
+
+  // Test Result가 비어있는지
+  if (/### Test Result/.test(triggerSection)) {
+    const resultSection = triggerSection.split(/### Test Result/i)[1]?.split(/### /)[0] || "";
+    if (resultSection.trim().length < 10) {
+      errors.push("[FORMAT_EMPTY_RESULT] Test Result가 비어있거나 너무 짧습니다. 터미널 출력을 복붙하세요.");
+    }
+  }
+
+  return errors;
+}
+
 function get_mtime(p) { try { return statSync(p).mtimeMs; } catch { return 0; } }
 function read_ack()   { try { return Number(readFileSync(ackFile, "utf8").trim()) || 0; } catch { return 0; } }
 function write_ack(ms) { writeFileSync(ackFile, String(ms), "utf8"); }
@@ -199,11 +238,25 @@ async function main() {
   // (A) Detect watch_file edit
   if (normalized.endsWith(c.watch_file.toLowerCase())) {
     const watchPath = find_watch_file();
-    if (watchPath && has_trigger(readFileSync(watchPath, "utf8"))) {
-      run_audit();
-    } else {
-      log("EXIT: no trigger_tag");
+    if (!watchPath) { log("EXIT: watch_file not found"); return; }
+
+    const content = readFileSync(watchPath, "utf8");
+    if (!has_trigger(content)) { log("EXIT: no trigger_tag"); return; }
+
+    // 형식 사전 검증 — 토큰 0, Codex 호출 전 차단
+    const formatErrors = validate_evidence_format(content);
+    if (formatErrors.length > 0) {
+      const errorList = formatErrors.map((e) => `  • ${e}`).join("\n");
+      process.stdout.write(
+        `\n[FORMAT-CHECK] 증거 패키지 형식 오류 — 감사를 건너뜁니다.\n` +
+        `아래 항목을 보충한 후 다시 제출하세요:\n\n${errorList}\n\n` +
+        `에러 코드: FORMAT_INCOMPLETE\n`
+      );
+      log(`FORMAT_INCOMPLETE: ${formatErrors.length} errors`);
+      return;
     }
+
+    run_audit();
     return;
   }
 
