@@ -12,46 +12,25 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
-import { createT } from "./i18n.mjs";
+import {
+  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus,
+  SEC, DOC_PATTERNS as D, t, createT,
+  triggerInner, agreeInner, pendingInner,
+  STATUS_TAG_RE, STATUS_TAG_RE_GLOBAL,
+  findWatchFile, findRespondFile,
+  extractStatusFromLine, readSection, replaceSection, removeSection,
+  parseStatusLines, stripStatusFormatting, replaceStatusTag,
+  collectIdsFromLine, readBulletSection, isEmptyMarker,
+  extractApprovedIds, extractPendingIds,
+  extractApprovedIdsFromSection, mergeIdSets,
+} from "./context.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..", "..", "..");
-const cfg = JSON.parse(readFileSync(resolve(__dirname, "config.json"), "utf8"));
-const t = createT(cfg.plugin.locale ?? "en");
-
-// Section heading constants pulled from config — protocol identifiers, not UI messages.
-const S = cfg.consensus.sections ?? {};
-const D = cfg.consensus.doc_patterns ?? {};
-const SEC = {
-  auditScope:         S.audit_scope         ?? "감사 범위",
-  finalVerdict:       S.final_verdict       ?? "최종 판정",
-  agreedAnchor:       S.agreed_anchor       ?? "합의완료",
-  resetCriteria:      S.reset_criteria      ?? "완료 기준 재고정",
-  rejectCodes:        S.reject_codes        ?? "반려 코드",
-  additionalTasks:    S.additional_tasks    ?? "추가 작업",
-  nextTask:           S.next_task           ?? "다음 작업",
-  deprecatedProtocol: S.deprecated_protocol ?? "개선된 프로토콜",
-  promotionTarget:    S.promotion_target    ?? "현재 승격 대상",
-};
-const triggerInner = cfg.consensus.trigger_tag.replace(/^\[|\]$/g, "");
-const agreeInner   = cfg.consensus.agree_tag.replace(/^\[|\]$/g, "");
-const pendingInner = cfg.consensus.pending_tag.replace(/^\[|\]$/g, "");
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const claudePathPlugin = resolve(__dirname, cfg.consensus.watch_file);
-const claudePathRepo   = resolve(repoRoot, cfg.consensus.watch_file);
-const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
-const respondFile      = cfg.plugin.respond_file ?? "gpt.md";
-const gptPath          = resolve(dirname(claudePath), respondFile);
-const planningDirs     = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d.replace(/^\/+/, "")));
-const watchFileDisplay = cfg.consensus.watch_file;
-const gptFileDisplay   = `${dirname(cfg.consensus.watch_file)}/${respondFile}`;
-const STATUS_TAG_RE = new RegExp(
-  `\\[(${[agreeInner, pendingInner, triggerInner].map(escapeRe).join("|")})(?:[^\\]]*?)\\]`,
-);
-const STATUS_TAG_RE_GLOBAL = new RegExp(
-  "`?\\[(" + [agreeInner, pendingInner, triggerInner].map(escapeRe).join("|") + ")(?:[^\\]]*?)\\]`?",
-  "g",
-);
+const claudePath = findWatchFile();
+const respondFile      = plugin.respond_file ?? "gpt.md";
+const gptPath          = claudePath ? resolve(dirname(claudePath), respondFile) : null;
+const planningDirs     = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d.replace(/^\/+/, "")));
+const watchFileDisplay = consensus.watch_file;
+const gptFileDisplay   = `${dirname(consensus.watch_file)}/${respondFile}`;
 
 function usage() {
   console.log(`Usage: node .claude/hooks/consensus-loop/respond.mjs [options]
@@ -78,47 +57,7 @@ function parseArgs(argv) {
   return args;
 }
 
-function extractStatusFromLine(line) {
-  const match = line.match(STATUS_TAG_RE);
-  if (!match) {
-    return null;
-  }
-
-  const innerRe = new RegExp([agreeInner, pendingInner, triggerInner].map(escapeRe).join("|"), "g");
-  const statuses = [...match[0].matchAll(innerRe)].map((item) => item[0]);
-  // Last tag wins — a line may carry both trigger and agree tags simultaneously;
-  // the rightmost (most recent) state takes precedence.
-  return statuses.at(-1) ?? null;
-}
-
-/** Extract all lines carrying a status tag from audit scope and final verdict sections. */
-function parseStatusLines(markdown) {
-  const items = [];
-  for (const line of markdown.split(/\r?\n/)) {
-    const status = extractStatusFromLine(line);
-    if (!status) continue;
-    // Item text with status tags stripped — used as a comparison key
-    const key = line
-      .replace(STATUS_TAG_RE_GLOBAL, "")
-      .replace(/\*\*/g, "")
-      .replace(/`/g, "")
-      .replace(/^[\s-]*/, "")
-      .replace(/:\s*$/, "")
-      .trim();
-    items.push({ status, key, raw: line.trim() });
-  }
-  return items;
-}
-
-function stripStatusFormatting(line) {
-  return line
-    .replace(STATUS_TAG_RE_GLOBAL, "")
-    .replace(/^[\s#-]*/, "")
-    .replace(/`/g, "")
-    .replace(/\*\*/g, "")
-    .replace(/:\s*$/, "")
-    .trim();
-}
+// extractStatusFromLine, parseStatusLines, stripStatusFormatting → context.mjs에서 import
 
 /** Apply agree_tag verdicts from gpt.md to claude.md. */
 function syncApproved(claudeMd, gptMd) {
@@ -189,77 +128,9 @@ function extractCorrections(gptMd) {
   return [...new Set(pending.map((p) => p.key))];
 }
 
-function readSection(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const start = lines.findIndex((line) => new RegExp(`^##\\s+${heading}\\s*$`).test(line.trim()));
-  if (start < 0) {
-    return null;
-  }
-  const end = lines.findIndex((line, idx) => idx > start && /^##\s+/.test(line.trim()));
-  return {
-    start,
-    end: end >= 0 ? end : lines.length,
-    lines: lines.slice(start, end >= 0 ? end : lines.length),
-  };
-}
+// readSection, readBulletSection, isEmptyMarker, replaceSection, removeSection, replaceStatusTag → context.mjs에서 import
 
-function readBulletSection(markdown, heading) {
-  const section = readSection(markdown, heading);
-  if (!section) {
-    return [];
-  }
-  return section.lines
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("- "))
-    .map((line) => line.replace(/^- /, "").trim());
-}
-
-function isEmptyMarker(line) {
-  return new RegExp(`^\`?(${D.empty_markers ?? "해당 없음|없음|none"})\`?$`, "i").test(line.trim());
-}
-
-function replaceSection(markdown, heading, replacementLines) {
-  const lines = markdown.split(/\r?\n/);
-  const section = readSection(markdown, heading);
-  const replacement = [...replacementLines];
-
-  if (section) {
-    lines.splice(section.start, section.end - section.start, ...replacement);
-    return `${lines.join("\n")}\n`;
-  }
-
-  const trimmed = markdown.replace(/\s*$/, "");
-  return `${trimmed}\n\n${replacement.join("\n")}\n`;
-}
-
-function removeSection(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const section = readSection(markdown, heading);
-  if (!section) {
-    return markdown;
-  }
-  lines.splice(section.start, section.end - section.start);
-  return `${lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s*$/, "")}\n`;
-}
-
-function replaceStatusTag(line, status) {
-  return line.replace(STATUS_TAG_RE, `[${status}]`);
-}
-
-function extractApprovedIdsFromSection(markdown, heading) {
-  const section = readSection(markdown, heading);
-  return section ? extractApprovedIds(section.lines.join("\n")) : new Set();
-}
-
-function mergeIdSets(...sets) {
-  const merged = new Set();
-  for (const set of sets) {
-    for (const value of set) {
-      merged.add(value);
-    }
-  }
-  return merged;
-}
+// extractApprovedIdsFromSection, mergeIdSets → context.mjs에서 import
 
 function normalizeGptAuditScopeStatus(gptMd) {
   const auditSection = readSection(gptMd, SEC.auditScope);
@@ -485,67 +356,7 @@ function syncGptNextTaskWithPromotion(gptMd, claudeMd, state) {
   return { updated, changed: updated !== gptMd };
 }
 
-function collectIdsFromLine(line) {
-  const ids = new Set();
-  const rangeRe = /\b([A-Z]{2,})-(\d+)([A-Z]?)\s*~\s*(?:\1-?)?(\d+)([A-Z]?)\b/g;
-  let rangeMatch;
-  while ((rangeMatch = rangeRe.exec(line)) !== null) {
-    const prefix = rangeMatch[1];
-    const start = Number(rangeMatch[2]);
-    const startSuffix = rangeMatch[3] ?? "";
-    const end = Number(rangeMatch[4]);
-    const endSuffix = rangeMatch[5] ?? "";
-    if (Number.isFinite(start) && Number.isFinite(end) && end >= start && startSuffix === endSuffix) {
-      for (let i = start; i <= end; i++) {
-        ids.add(`${prefix}-${i}${startSuffix}`);
-      }
-    }
-  }
-
-  const idRe = /\b([A-Z]{2,})-(\d+)([A-Z]?)\b/g;
-  let idMatch;
-  while ((idMatch = idRe.exec(line)) !== null) {
-    ids.add(`${idMatch[1]}-${idMatch[2]}${idMatch[3] ?? ""}`);
-  }
-
-  // Single-char prefix IDs: E1, E2, F3, G1 etc. (no dash, digit directly follows)
-  // Exclude H1-H6 to avoid false positives with markdown headings.
-  const singleRe = /\b([A-Z])(\d{1,2})\b/g;
-  let singleMatch;
-  while ((singleMatch = singleRe.exec(line)) !== null) {
-    const id = `${singleMatch[1]}${singleMatch[2]}`;
-    if (/^H[1-6]$/.test(id)) continue;
-    ids.add(id);
-  }
-
-  return [...ids];
-}
-
-function extractApprovedIds(markdown) {
-  const ids = new Set();
-  for (const line of markdown.split(/\r?\n/)) {
-    if (extractStatusFromLine(line) !== agreeInner) {
-      continue;
-    }
-    for (const id of collectIdsFromLine(line)) {
-      ids.add(id);
-    }
-  }
-  return ids;
-}
-
-function extractPendingIds(markdown) {
-  const ids = new Set();
-  for (const line of markdown.split(/\r?\n/)) {
-    if (extractStatusFromLine(line) !== pendingInner) {
-      continue;
-    }
-    for (const id of collectIdsFromLine(line)) {
-      ids.add(id);
-    }
-  }
-  return ids;
-}
+// collectIdsFromLine, extractApprovedIds, extractPendingIds → context.mjs에서 import
 
 function resolvePromotionApprovedIds(claudeMd, gptMd) {
   const approved = mergeIdSets(
@@ -875,7 +686,7 @@ function buildFixPrompt(corrections, gptMd) {
   const nextTasks = readBulletSection(gptMd, SEC.nextTask);
   const none = D.none_item ?? t("pdoc.none_item");
 
-  const template = readFileSync(resolve(__dirname, cfg.plugin.fix_prompt), "utf8");
+  const template = readFileSync(resolve(HOOKS_DIR, cfg.plugin.fix_prompt), "utf8");
   return template
     .split("{{CORRECTIONS}}").join(corrections.map((c) => `- ${c}`).join("\n"))
     .split("{{REJECT_CODES}}").join(rejectCodes.length > 0 ? rejectCodes.map((c) => `- ${c}`).join("\n") : none)
@@ -888,7 +699,9 @@ function buildFixPrompt(corrections, gptMd) {
     .split("{{GPT_MD_PATH}}").join(gptPath)
     .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag)
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
-    .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag);
+    .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
+    .split("{{LOCALE}}").join(plugin.locale ?? "en")
+    .split("{{DESIGN_DOCS_DIR}}").join(consensus.design_docs_dir ?? "docs/ko/design/**");
 }
 
 function main() {
@@ -1032,7 +845,7 @@ function main() {
       console.log(t("respond.invoking_claude"));
       const prompt = buildFixPrompt(corrections, gptMd);
       const result = spawnResolved(resolveBinary("claude", "CLAUDE_BIN"), ["-p"], {
-        cwd: repoRoot,
+        cwd: REPO_ROOT,
         input: prompt,
         stdio: ["pipe", "inherit", "inherit"],
         env: { ...process.env, FEEDBACK_LOOP_ACTIVE: "1" },
@@ -1064,9 +877,9 @@ function main() {
         );
         if (remainingItems.length === 0) {
           console.log(t("respond.retro.all_clear", { rx_id: retroId }));
-          const retroScriptPath = resolve(__dirname, retroScript);
+          const retroScriptPath = resolve(HOOKS_DIR, retroScript);
           spawnResolved(process.execPath, [retroScriptPath], {
-            cwd: repoRoot,
+            cwd: REPO_ROOT,
             stdio: ["ignore", "inherit", "inherit"],
             encoding: "utf8",
           });

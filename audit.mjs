@@ -3,40 +3,21 @@
 
 import { readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
-import { createT } from "./i18n.mjs";
+import {
+  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus,
+  SEC, t, escapeRe,
+  triggerInner, agreeInner, pendingInner, STATUS_TAG_RE,
+  findWatchFile, extractStatusFromLine, readSection,
+} from "./context.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..", "..", "..");
-const cfg = JSON.parse(readFileSync(resolve(__dirname, "config.json"), "utf8"));
-const t = createT(cfg.plugin.locale ?? "en");
-
-// Section heading constants pulled from config — protocol identifiers, not UI messages.
-const S = cfg.consensus.sections ?? {};
-const SEC = {
-  auditScope:      S.audit_scope      ?? "감사 범위",
-  promotionTarget: S.promotion_target ?? "현재 승격 대상",
-  changedFiles:    S.changed_files    ?? "변경 파일",
-  nextTask:        S.next_task        ?? "다음 작업",
-};
-
-const promptTemplatePath = resolve(__dirname, cfg.plugin.audit_prompt);
-const claudePathPlugin   = resolve(__dirname, cfg.consensus.watch_file);
-const claudePathRepo     = resolve(repoRoot, cfg.consensus.watch_file);
-const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
-const gptPath    = resolve(dirname(claudePath), cfg.plugin.respond_file ?? "gpt.md");
-const sessionPath = resolve(__dirname, cfg.plugin.session_file);
-const planningDirs = (cfg.consensus.planning_dirs ?? []).map((d) => resolve(repoRoot, d));
+const promptTemplatePath = resolve(HOOKS_DIR, plugin.audit_prompt);
+const claudePath = findWatchFile();
+const gptPath    = claudePath ? resolve(dirname(claudePath), plugin.respond_file ?? "gpt.md") : null;
+const sessionPath = resolve(HOOKS_DIR, plugin.session_file);
+const planningDirs = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d));
 const promotionDocPaths = planningDirs.map((d) => resolve(d, "feedback-promotion.md"));
-const triggerInner = cfg.consensus.trigger_tag.replace(/^\[|\]$/g, "");
-const agreeInner   = cfg.consensus.agree_tag.replace(/^\[|\]$/g, "");
-const pendingInner = cfg.consensus.pending_tag.replace(/^\[|\]$/g, "");
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const STATUS_TAG_RE = new RegExp(
-  `\\[(${[agreeInner, pendingInner, triggerInner].map(escapeRe).join("|")})(?:[^\\]]*?)\\]`,
-);
 
 function usage() {
   console.log(`Usage: node .claude/hooks/consensus-loop/audit.mjs [options]
@@ -179,16 +160,7 @@ function deleteSavedSessionId() {
   }
 }
 
-function extractStatusFromLine(line) {
-  const match = line.match(STATUS_TAG_RE);
-  if (!match) {
-    return null;
-  }
-
-  const innerRe = new RegExp([agreeInner, pendingInner, triggerInner].map(escapeRe).join("|"), "g");
-  const statuses = [...match[0].matchAll(innerRe)].map((item) => item[0]);
-  return statuses.at(-1) ?? null;
-}
+// extractStatusFromLine → context.mjs에서 import
 
 function hasPendingItems(markdown) {
   return new RegExp(`\\[(${escapeRe(triggerInner)}|${escapeRe(pendingInner)})\\]`).test(markdown);
@@ -222,13 +194,8 @@ function detectScope(markdown) {
 }
 
 function readSectionLines(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const start = lines.findIndex((line) => new RegExp(`^##\\s+${heading}\\s*$`).test(line.trim()));
-  if (start < 0) {
-    return [];
-  }
-  const end = lines.findIndex((line, idx) => idx > start && /^##\s+/.test(line.trim()));
-  return lines.slice(start + 1, end >= 0 ? end : lines.length);
+  const section = readSection(markdown, heading);
+  return section ? section.lines.slice(1) : [];
 }
 
 function loadPromotionHint() {
@@ -313,7 +280,8 @@ function buildPrompt(scopeText, promotionHint) {
     .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag)
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
     .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
-    .split("{{DESIGN_DOCS_DIR}}").join(cfg.consensus.design_docs_dir ?? "docs/ko/design/**");
+    .split("{{DESIGN_DOCS_DIR}}").join(cfg.consensus.design_docs_dir ?? "docs/ko/design/**")
+    .split("{{LOCALE}}").join(plugin.locale ?? "en");
 }
 
 function resolveCodexBin() {
@@ -431,7 +399,7 @@ function runRespond(args) {
     return;
   }
 
-  const respondArgs = [resolve(__dirname, "respond.mjs")];
+  const respondArgs = [resolve(HOOKS_DIR, "respond.mjs")];
   if (args.autoFix) {
     respondArgs.push("--auto-fix");
   }
@@ -440,7 +408,7 @@ function runRespond(args) {
   }
 
   const result = spawnSync(process.execPath, respondArgs, {
-    cwd: repoRoot,
+    cwd: REPO_ROOT,
     stdio: "inherit",
     encoding: "utf8",
   });
@@ -512,7 +480,7 @@ function main() {
     console.log(t("audit.debug_bin", { bin: codexBin }));
   }
   const result = spawnResolved(codexBin, codexArgs, {
-    cwd: repoRoot,
+    cwd: REPO_ROOT,
     input: prompt,
     stdio: ["pipe", "pipe", "pipe"],
     encoding: "utf8",
