@@ -354,7 +354,18 @@ function buildCodexArgs(args, resumeTarget) {
   return base;
 }
 
+const codexLogPath = resolve(HOOKS_DIR, "codex-session.log");
+
 function emitCodexOutput(stdout, stderr, rawJson) {
+  // Codex 세션 출력을 파일에 기록 — 디버깅용
+  try {
+    const { appendFileSync } = require("node:fs");
+    const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
+    appendFileSync(codexLogPath, `\n=== [${ts}] Codex session output ===\n`);
+    if (stdout) appendFileSync(codexLogPath, `[stdout]\n${stdout.slice(0, 5000)}\n`);
+    if (stderr) appendFileSync(codexLogPath, `[stderr]\n${stderr.slice(0, 2000)}\n`);
+  } catch { /* 로깅 실패는 무시 */ }
+
   let threadId = null;
   let sawJson = false;
 
@@ -484,6 +495,7 @@ function main() {
     input: prompt,
     stdio: ["pipe", "pipe", "pipe"],
     encoding: "utf8",
+    maxBuffer: 50 * 1024 * 1024, // 50MB — Codex JSON 이벤트 대량 출력 대응
   });
 
   const { threadId } = emitCodexOutput(result.stdout ?? "", result.stderr ?? "", args.json);

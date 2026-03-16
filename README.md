@@ -1,22 +1,17 @@
 # consensus-loop
 
-> **Claude Code PostToolUse hook** — a self-contained plugin that enforces a **tag-based two-party consensus protocol** between Claude and an external AI auditor (GPT/Codex).
+> **Claude Code hook plugin** — tag-based two-party consensus protocol between Claude (implementer) and an external AI auditor (GPT/Codex), with HITL retrospective gates.
 
-Drop in one directory, edit one `config.json`, and every file edit you make is automatically routed through an edit → audit → agree cycle.
+Drop in one directory, edit one `config.json`, and every file edit is automatically routed through an **edit → audit → agree → retro → commit** cycle.
 
 ---
 
 ## Why This Exists
 
-AI produces plausible-but-wrong output. Asking the same AI to review its own work repeats the same blind spots.
-
-This loop enforces three principles:
-
-1. **Independent critic** — The AI that writes (Claude) and the AI that reviews (GPT) are different models. The same model cannot reliably catch its own mistakes.
-2. **No progress without consensus** — Items tagged `[GPT미검증]` are incomplete until promoted to `[합의완료]`. Unverified changes do not accumulate.
-3. **Reflexion at every iteration end** — After consensus, record what went well, what failed, and what to improve. Lessons are injected into the next session's context — improving the AI without retraining.
-
-The consensus loop makes this discipline automatic rather than voluntary.
+1. **Independent critic** — The AI that writes (Claude) and the AI that reviews (GPT/Codex) are different models.
+2. **No progress without consensus** — `[trigger_tag]` items are incomplete until promoted to `[agree_tag]`.
+3. **HITL retrospective** — After consensus, the session gate forces a human-in-the-loop retrospective before commit.
+4. **Policy as data** — Audit criteria, rejection codes, and output formats are defined in editable reference files, not code.
 
 ---
 
@@ -24,12 +19,14 @@ The consensus loop makes this discipline automatic rather than voluntary.
 
 | Feature | Description |
 |---|---|
-| **Consensus loop** | `trigger_tag` in `watch_file` → runs `audit_script` → waits for `agree_tag` |
-| **Auto-sync** | When `gpt.md` is newer than `watch_file`, `respond_script` promotes/demotes tags automatically |
-| **Quality gates** | On every file edit, matching `quality_rules` run inline (ESLint, npm audit, …) |
-| **Planning normalization** | Edits to `planning_dirs` files call `respond.mjs --gpt-only` to normalize `gpt.md` without a full audit |
-| **Retrospective** | After all items reach `agree_tag`, `retrospective.mjs` runs a three-question reflection cycle and appends findings to `watch_file` |
-| **Next-task engine** | `respond.mjs` reads `planning_dirs/*/work-breakdown.md` to auto-populate `## Next Task` in `gpt.md` |
+| **Consensus loop** | `trigger_tag` in `watch_file` → `audit.mjs` → waits for `agree_tag` |
+| **Auto-sync** | `gpt.md` newer than `watch_file` → `respond.mjs` promotes/demotes tags |
+| **Quality gates** | Every file edit → matching `quality_rules` run inline (ESLint, npm audit, …) |
+| **Session gate (HITL)** | PreToolUse hook blocks Bash/commit until retrospective is complete |
+| **Facade prompts** | Lean prompts (~30 lines) reference `templates/references/{locale}/` for detailed rules |
+| **Shared context** | `context.mjs` — single source for config, paths, parsers, i18n (no duplication) |
+| **Audit timestamp** | System-appended `> 감사 완료: YYYY-MM-DD HH:MM` on gpt.md (zero agent tokens) |
+| **Codex session log** | `codex-session.log` — Codex output recorded for debugging |
 
 ---
 
@@ -38,162 +35,129 @@ The consensus loop makes this discipline automatic rather than voluntary.
 ```
 consensus-loop/
 │
+├── context.mjs            ← Shared module: config, paths, parsers, i18n cache
 ├── index.mjs              ← PostToolUse hook entry point
-├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag is detected
-├── respond.mjs            ← Syncs gpt.md → claude.md; promotes/demotes status tags
-├── retrospective.mjs      ← Post-consensus retrospective runner (claude -p)
-├── cli-runner.mjs         ← Cross-platform binary resolver (Windows + Linux)
-├── i18n.mjs               ← Locale helper (loads locales/*.json, {var} substitution)
+├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag detected
+├── respond.mjs            ← Syncs gpt.md → claude.md; promotes/demotes tags
+├── retrospective.mjs      ← Sets retro marker after all items agreed
+├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
+├── cli-runner.mjs         ← Cross-platform binary resolver
+├── i18n.mjs               ← Standalone locale helper (fallback for non-context imports)
 │
 ├── locales/
-│   ├── en.json            ← English UI strings for all scripts
-│   └── ko.json            ← Korean UI strings
+│   ├── en.json
+│   └── ko.json
 │
-├── docs/
-│   ├── en/README.md       ← Full plugin reference (English)
-│   └── ko/README.md       ← Full plugin reference (Korean)
+├── templates/
+│   ├── audit-prompt.md    ← Facade (~30 lines) → references policy files
+│   ├── fix-prompt.md      ← Facade → references fix-rules, evidence-format
+│   ├── retro-prompt.md    ← Facade → references retro-questions, memory-cleanup
+│   └── references/
+│       ├── ko/            ← Korean policy files (team-editable)
+│       │   ├── rejection-codes.md
+│       │   ├── test-checklist.md
+│       │   ├── output-format.md
+│       │   ├── evidence-format.md
+│       │   ├── memory-cleanup.md
+│       │   ├── principles.md
+│       │   ├── retro-questions.md
+│       │   └── fix-rules.md
+│       └── en/            ← English equivalents
 │
 ├── tests/
-│   └── cl1-verify.test.mjs  ← CL-1 unit tests (find_respond_file, singleRe)
+├── plans/                 ← Example planning docs (ko/en)
+├── examples/              ← Example config and templates
 │
-├── examples/
-│   ├── config.example.json        ← Annotated full config reference
-│   ├── plans/
-│   │   ├── en/                    ← Example planning document structure
-│   │   └── ko/                    ← Korean equivalents
-│   └── templates/
-│       ├── en/                    ← Starting points for audit / fix / retro prompts
-│       └── ko/
-│
-└── (project-specific — gitignored)
-    ├── config.json        ← Your live config (copy from examples/config.example.json)
-    ├── templates/         ← Your active prompt templates (audit-prompt.md, fix-prompt.md, retro-prompt.md)
-    ├── feedback/          ← Your live feedback files (claude.md, gpt.md)
-    ├── plans/             ← Your active planning documents
-    ├── ack.timestamp      ← GPT ack dedup guard (auto-generated)
-    ├── session.id         ← Current audit session ID (auto-generated)
-    └── debug.log          ← Hook run log (auto-generated)
+└── (auto-generated — gitignored)
+    ├── config.json
+    ├── .session-state/    ← retro-marker.json (session gate state)
+    ├── ack.timestamp
+    ├── session.id
+    ├── debug.log
+    └── codex-session.log
 ```
-
----
-
-## Scripts
-
-### `index.mjs` — Hook Entry Point
-
-Receives the PostToolUse JSON payload from Claude Code via stdin and dispatches to the appropriate handler:
-
-- **(A)** `watch_file` edited + `trigger_tag` present → calls `audit.mjs`
-- **(B)** Any other file edited, `gpt.md` newer than `watch_file` → calls `respond.mjs`
-- **(C)** Edited file matches a `quality_rule` → runs the configured command inline (ESLint, npm audit, …)
-- **(D)** Edited file is under `planning_dirs` → calls `respond.mjs --gpt-only` (normalize pass only)
-
-Reentrance is prevented via the `FEEDBACK_LOOP_ACTIVE` environment variable.
-
----
-
-### `audit.mjs` — Audit Runner
-
-Sends the watch file contents to the Codex CLI for independent review. Manages the audit session lifecycle:
-
-- Detects pending items (`trigger_tag` / `pending_tag`) and extracts audit scope automatically
-- Resumes an existing Codex session or starts a new one (`--resume-last`, `--no-resume`, `--session-id`)
-- Writes the thread ID to `session.id` for continuity across invocations
-- Resets the session when all items reach `agree_tag`
-- Pre-checks ESLint coverage consistency between "changed files" and "Test Command" sections
-- After audit, calls `respond.mjs` to sync the result back into `watch_file`
-
-Key options: `--scope`, `--model`, `--dry-run`, `--auto-fix`, `--no-sync`, `--reset-session`
-
----
-
-### `respond.mjs` — Tag Sync Engine
-
-Reads `gpt.md` (the auditor's verdict) and updates `watch_file` accordingly:
-
-- **agree_tag items**: promotes the tag directly via file write
-- **pending_tag items**: extracts corrections from `gpt.md` and forwards them to `claude -p` for resolution (with `--auto-fix`)
-- **`--gpt-only`**: normalizes only `gpt.md` and promotion docs without touching `watch_file`
-- Keeps the `## Next Task` section in sync with the planning documents
-
-The promotion engine (`computePromotionState`, `deriveAutoPromotionStage`, `renderPromotionDoc`) reads `feedback-promotion.md` in `planning_dirs` to determine the next bundle to work on.
-
----
-
-### `cli-runner.mjs` — Binary Resolver
-
-Portable utility that finds CLI executables on both Windows and Linux:
-
-- **`resolveBinary(command, envVarName)`**: checks `envVarName` env-var override first, then searches `PATH`. On Windows, probes `PATHEXT` extensions (`.exe`, `.cmd`, `.bat`, …).
-- **`spawnResolved(binary, args, options)`**: wraps `spawnSync` with Windows-specific dispatch — `.cmd/.bat` runs with `shell: true`; `.ps1` delegates to `pwsh` or `powershell`.
-
----
-
-### `i18n.mjs` — Locale Helper
-
-Minimal locale system used by all scripts:
-
-- **`createT(locale)`**: loads `locales/<locale>.json`, falls back to `en.json` if the target is missing.
-- Returns a `t(key, vars)` function that substitutes `{var}` placeholders.
-- Locale is set via `plugin.locale` in `config.json` (default: `"en"`).
-
----
-
-### `retrospective.mjs` — Retrospective Runner
-
-Called by `respond.mjs` after all audit items are promoted to `agree_tag`:
-
-1. Extracts the last 10 agreed items from `watch_file` as context
-2. Injects context into `templates/retro-prompt.md`
-3. Runs `claude -p` to answer three reflection questions and implement improvements
-4. Verifies that an `RX-N` block was written to `watch_file`
-5. Triggers `audit.mjs` to start the next audit cycle immediately
 
 ---
 
 ## How It Works
 
-```
-PostToolUse (any file edit)
-        │
-        ▼
-   index.mjs
-        │
-        ├─ watch_file edited + trigger_tag present?
-        │       └─→ audit.mjs  (send to GPT/Codex, write gpt.md)
-        │
-        ├─ gpt.md newer than watch_file?
-        │       └─→ respond.mjs  (parse gpt.md, promote/demote tags)
-        │
-        ├─ planning file edited?
-        │       └─→ respond.mjs --gpt-only  (normalize pass only)
-        │
-        └─ quality rule matches?
-                └─→ run configured command (ESLint, npm audit, …)
-```
-
-Status transitions:
+### Full Cycle
 
 ```
-[trigger_tag]  →  audit.mjs  →  [agree_tag]   (consensus reached)
-                              ↘  [pending_tag]  →  respond.mjs --auto-fix  →  correction
+Code Edit → PostToolUse hook
+    │
+    ├─ watch_file + trigger_tag? → audit.mjs (GPT/Codex review)
+    │                                  ↓
+    │                            gpt.md created
+    │                                  ↓
+    │                            respond.mjs (tag sync)
+    │                                  ↓
+    │                    ┌─── [agree_tag] ───── retrospective.mjs
+    │                    │                           ↓
+    │                    │                    retro-marker set
+    │                    │                           ↓
+    │                    │                    session-gate blocks Bash
+    │                    │                           ↓
+    │                    │                    HITL retrospective (user + AI)
+    │                    │                           ↓
+    │                    │                    echo session-self-improvement-complete
+    │                    │                           ↓
+    │                    │                    git commit allowed
+    │                    │
+    │                    └─── [pending_tag] → respond.mjs --auto-fix → correction
+    │
+    ├─ gpt.md newer? → respond.mjs (auto-sync)
+    ├─ planning file? → respond.mjs --gpt-only
+    └─ quality rule? → run command (ESLint, npm audit, …)
 ```
+
+### Session Gate (HITL)
+
+The `session-gate.mjs` PreToolUse hook enforces retrospective completion:
+
+- **Marker set** → Bash/Agent blocked, Read/Write/Edit allowed (for memory work)
+- **Session-aware** → only blocks the session that completed the audit (other sessions unaffected)
+- **Completion** → `echo session-self-improvement-complete` clears marker
+- **Fail-open** → errors pass through silently (never locks the system)
+
+---
+
+## Facade Pattern for Prompts
+
+Prompt templates are lean facades (~30 lines) that reference policy files:
+
+```
+audit-prompt.md (30 lines)
+  → references/{{LOCALE}}/rejection-codes.md
+  → references/{{LOCALE}}/test-checklist.md
+  → references/{{LOCALE}}/output-format.md
+  → references/{{LOCALE}}/principles.md
+```
+
+**To change audit criteria**: edit `references/ko/rejection-codes.md`. No code changes needed.
 
 ---
 
 ## Quick Setup
 
-**1. Copy the plugin into your project:**
+**1. Copy into your project:**
 
 ```
 cp -r consensus-loop  <your-repo>/.claude/hooks/
 ```
 
-**2. Register the hook in `.claude/settings.local.json`:**
+**2. Register hooks in `.claude/settings.local.json`:**
 
 ```json
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/consensus-loop/session-gate.mjs", "timeout": 10000 }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -213,20 +177,14 @@ cp .claude/hooks/consensus-loop/examples/config.example.json \
    .claude/hooks/consensus-loop/config.json
 ```
 
-Adjust `consensus.watch_file`, `consensus.trigger_tag`, `consensus.agree_tag`, and `consensus.planning_dirs` for your project.
-
-**4. Copy and edit prompt templates:**
+**4. Copy prompt templates + references:**
 
 ```
-cp .claude/hooks/consensus-loop/examples/templates/en/audit-prompt.example.md \
-   .claude/hooks/consensus-loop/templates/audit-prompt.md
-
-cp .claude/hooks/consensus-loop/examples/templates/en/fix-prompt.example.md \
-   .claude/hooks/consensus-loop/templates/fix-prompt.md
-
-cp .claude/hooks/consensus-loop/examples/templates/en/retro-prompt.example.md \
-   .claude/hooks/consensus-loop/templates/retro-prompt.md
+cp -r .claude/hooks/consensus-loop/examples/templates/ \
+      .claude/hooks/consensus-loop/templates/
 ```
+
+Adjust tags, file paths, and reference policies for your project.
 
 ---
 
@@ -236,11 +194,11 @@ cp .claude/hooks/consensus-loop/examples/templates/en/retro-prompt.example.md \
 {
   "plugin": {
     "locale":          "en",                         // "en" or "ko"
-    "audit_script":    "audit.mjs",                  // relative to plugin dir
+    "audit_script":    "audit.mjs",
     "audit_prompt":    "templates/audit-prompt.md",
     "respond_script":  "respond.mjs",
     "fix_prompt":      "templates/fix-prompt.md",
-    "respond_file":    "gpt.md",                     // auditor output filename
+    "respond_file":    "gpt.md",
     "retro_script":    "retrospective.mjs",
     "retro_prompt":    "templates/retro-prompt.md",
     "ack_file":        "ack.timestamp",
@@ -248,96 +206,51 @@ cp .claude/hooks/consensus-loop/examples/templates/en/retro-prompt.example.md \
     "debug_log":       "debug.log"
   },
   "consensus": {
-    "watch_file":      "feedback/claude.md",         // repo-root relative
+    "watch_file":      "feedback/claude.md",
     "trigger_tag":     "[GPT미검증]",
     "agree_tag":       "[합의완료]",
     "pending_tag":     "[계류]",
-    "planning_files":  [],                           // explicit file list (repo-root relative)
-    "planning_dirs":   ["docs/ko/design/improved"],  // no leading slash — repo-root relative
-    "design_docs_dir": "docs/ko/design/**",          // glob for read-only design docs
-    "sections": {                                    // ## heading names in your feedback files
-      "audit_scope":   "감사 범위",
-      "final_verdict": "최종 판정",
-      "next_task":     "다음 작업"
-      // ... see examples/config.example.json for all keys
-    },
-    "doc_patterns": {                                // regex / text fragments used when writing sections
-      "no_next_task":  "현재 등록된 다음 작업 없음"
-      // ... see examples/config.example.json for all keys
-    }
+    "planning_dirs":   ["docs/ko/design/improved"],
+    "sections": { ... },
+    "doc_patterns": { ... }
   },
-  "quality_rules": [
-    {
-      "match": { "extension": ".ts", "path_contains": ["/src/", "/tests/"] },
-      "label": "eslint",
-      "command": "npx eslint --no-error-on-unmatched-pattern \"{file}\""
-    }
-  ]
+  "quality_rules": [ ... ]
 }
 ```
 
 ---
 
-## Porting to Another Project
+## Template Variables
 
-1. Copy `consensus-loop/` into the project's `.claude/hooks/`
-2. Edit `config.json` — set your tags, file paths, and quality rules
-3. Register the hook in `.claude/settings.local.json`
-
-The tags and file names are fully configurable. Example for an English-language review workflow:
-
-```json
-{
-  "watch_file":  "docs/review/author.md",
-  "trigger_tag": "[REVIEW_NEEDED]",
-  "agree_tag":   "[APPROVED]",
-  "pending_tag": "[CHANGES_REQUESTED]"
-}
-```
-
----
-
-## Environment Variables
-
-**`templates/audit-prompt.md`** — injected by `audit.mjs`:
+### `audit-prompt.md`
 
 | Variable | Resolved to |
 |---|---|
-| `{{SCOPE}}` | Audit scope (auto-detected or `--scope` override) |
-| `{{PROMOTION_SECTION}}` | Next promotion candidate block (empty if none) |
-| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` |
-| `{{GPT_MD_PATH}}` | Absolute path to `gpt.md` |
-| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
-| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
-| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
-| `{{DESIGN_DOCS_DIR}}` | Value of `consensus.design_docs_dir` |
+| `{{SCOPE}}` | Audit scope (auto-detected or `--scope`) |
+| `{{PROMOTION_SECTION}}` | Next promotion candidate block |
+| `{{CLAUDE_MD_PATH}}` | Absolute path to watch_file |
+| `{{GPT_MD_PATH}}` | Absolute path to gpt.md |
+| `{{TRIGGER_TAG}}` / `{{AGREE_TAG}}` / `{{PENDING_TAG}}` | Tag values |
+| `{{DESIGN_DOCS_DIR}}` | Read-only design docs glob |
+| `{{LOCALE}}` | Current locale (ko/en) — for references path |
 
-**`templates/fix-prompt.md`** — injected by `respond.mjs`:
-
-| Variable | Resolved to |
-|---|---|
-| `{{CORRECTIONS}}` | Bullet list of GPT corrections |
-| `{{REJECT_CODES}}` | Rejection reason codes from `gpt.md` |
-| `{{RESET_CRITERIA}}` | Reset criteria from `gpt.md` |
-| `{{NEXT_TASKS}}` | Next task list from `gpt.md` |
-| `{{GPT_MD}}` | Full raw content of `gpt.md` |
-| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` (also `{{WATCH_FILE}}`) |
-| `{{GPT_MD_PATH}}` | Absolute path to `gpt.md` (also `{{RESPOND_FILE}}`) |
-| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
-| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
-| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
-| `{{DESIGN_DOCS_DIR}}` | Value of `consensus.design_docs_dir` |
-
-**`templates/retro-prompt.md`** — injected by `retrospective.mjs`:
+### `fix-prompt.md`
 
 | Variable | Resolved to |
 |---|---|
-| `{{CLAUDE_MD_PATH}}` | Absolute path to `watch_file` |
-| `{{RX_ID}}` | Retrospective identifier (e.g. `RX-003`) |
-| `{{AGREED_ITEMS}}` | List of items that just reached `agree_tag` |
-| `{{TRIGGER_TAG}}` | Value of `consensus.trigger_tag` |
-| `{{AGREE_TAG}}` | Value of `consensus.agree_tag` |
-| `{{PENDING_TAG}}` | Value of `consensus.pending_tag` |
+| `{{CORRECTIONS}}` | GPT correction list |
+| `{{REJECT_CODES}}` | Rejection codes |
+| `{{RESET_CRITERIA}}` | Reset criteria |
+| `{{NEXT_TASKS}}` | Next task list |
+| `{{GPT_MD}}` | Full gpt.md content |
+| `{{LOCALE}}` | Current locale |
+
+### `retro-prompt.md`
+
+| Variable | Resolved to |
+|---|---|
+| `{{AGREED_ITEMS}}` | Recently agreed items |
+| `{{LOCALE}}` | Current locale |
 
 ---
 
@@ -345,7 +258,29 @@ The tags and file names are fully configurable. Example for an English-language 
 
 | Variable | Description |
 |---|---|
-| `FEEDBACK_LOOP_ACTIVE=1` | Reentrance guard — set automatically inside spawned scripts |
-| `FEEDBACK_HOOK_DRY_RUN=1` | Dry-run mode — prints what would run without executing `audit_script` |
-| `CODEX_BIN` | Override the Codex CLI executable path |
-| `CLAUDE_BIN` | Override the Claude CLI executable path |
+| `FEEDBACK_LOOP_ACTIVE=1` | Reentrance guard (auto-set in child processes) |
+| `FEEDBACK_HOOK_DRY_RUN=1` | Dry-run mode |
+| `CODEX_BIN` | Override Codex CLI path |
+| `CLAUDE_BIN` | Override Claude CLI path |
+| `RETRO_SESSION_ID` | Session ID propagated to retro marker |
+| `VITEST_SHARD` | When set, coverage thresholds are disabled |
+
+---
+
+## Porting to Another Project
+
+1. Copy `consensus-loop/` into `.claude/hooks/`
+2. Edit `config.json` — set tags, paths, quality rules
+3. Edit `templates/references/{locale}/` — set team policies
+4. Register hooks in `.claude/settings.local.json`
+
+Example for English:
+
+```json
+{
+  "watch_file": "docs/review/author.md",
+  "trigger_tag": "[REVIEW_NEEDED]",
+  "agree_tag": "[APPROVED]",
+  "pending_tag": "[CHANGES_REQUESTED]"
+}
+```
