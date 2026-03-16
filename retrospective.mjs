@@ -2,20 +2,16 @@
 /* global process, console */
 
 /**
- * Automatic retrospective script.
+ * 감사 사이클 완료 후 회고 마커를 설정.
  *
- * Called by respond.mjs immediately after all audit items are closed as [agreed].
- * 1. Extracts recently agreed items from the watch file and passes them as context.
- * 2. Injects context into the retro-prompt.md template.
- * 3. Runs the retrospective via `claude -p` (answers three questions + implements improvements).
- * 4. A retrospective block ([trigger_tag] RX-N) is appended to the watch file.
- * 5. Calls audit.mjs directly to start the next audit cycle.
+ * respond.mjs에서 모든 감사 항목이 [합의완료]일 때 호출됨.
+ * 기존: claude -p로 외부 에이전트 실행 (HITL 불가, 통제 불가)
+ * 변경: 마커 파일만 작성 → session-gate.mjs가 메인 세션에서 회고 강제 (HITL 가능)
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
 import { createT } from "./i18n.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -23,11 +19,14 @@ const repoRoot = resolve(__dirname, "..", "..", "..");
 const cfg = JSON.parse(readFileSync(resolve(__dirname, "config.json"), "utf8"));
 const t = createT(cfg.plugin.locale ?? "en");
 
+const MARKER_DIR = resolve(__dirname, ".session-state");
+const MARKER_PATH = resolve(MARKER_DIR, "retro-marker.json");
+
 const claudePathPlugin = resolve(__dirname, cfg.consensus.watch_file);
 const claudePathRepo   = resolve(repoRoot, cfg.consensus.watch_file);
 const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
 
-/** Counts existing RX-N entries to determine the next sequential retrospective ID. */
+/** RX-N 시퀀스 다음 번호 산출. */
 function nextRetroId(claudeMd) {
   const matches = claudeMd.match(/\bRX-(\d+)\b/g) ?? [];
   const nums = matches.map((m) => parseInt(m.slice(3), 10));
@@ -35,7 +34,7 @@ function nextRetroId(claudeMd) {
   return `RX-${max + 1}`;
 }
 
-/** Extracts agreed items listed under the agreed_anchor section of the watch file. */
+/** 합의완료 섹션에서 최근 항목 추출. */
 function extractAgreedContext(claudeMd, agreedAnchor) {
   const lines = claudeMd.split(/\r?\n/);
   const anchorRe = new RegExp(`^##\\s+${agreedAnchor}\\s*$`);
@@ -45,20 +44,9 @@ function extractAgreedContext(claudeMd, agreedAnchor) {
   const end = lines.findIndex((l, i) => i > start && /^##\s+/.test(l.trim()));
   const section = (end < 0 ? lines.slice(start + 1) : lines.slice(start + 1, end))
     .filter((l) => l.trim().startsWith("- "))
-    .slice(-10); // last 10 entries only
+    .slice(-10);
 
   return section.length > 0 ? section.join("\n") : t("retro.no_agreed_items");
-}
-
-function buildPrompt(templatePath, rxId, agreedItems) {
-  let tpl = readFileSync(templatePath, "utf8");
-  tpl = tpl.replace(/\{\{CLAUDE_MD_PATH\}\}/g, claudePath);
-  tpl = tpl.replace(/\{\{RX_ID\}\}/g, rxId);
-  tpl = tpl.replace(/\{\{AGREED_ITEMS\}\}/g, agreedItems);
-  tpl = tpl.replace(/\{\{TRIGGER_TAG\}\}/g, cfg.consensus.trigger_tag);
-  tpl = tpl.replace(/\{\{AGREE_TAG\}\}/g, cfg.consensus.agree_tag);
-  tpl = tpl.replace(/\{\{PENDING_TAG\}\}/g, cfg.consensus.pending_tag);
-  return tpl;
 }
 
 function main() {
@@ -67,64 +55,31 @@ function main() {
     return;
   }
 
-  const templatePath = resolve(__dirname, cfg.plugin.retro_prompt ?? "templates/retro-prompt.md");
-  if (!existsSync(templatePath)) {
-    console.log(t("retro.no_template", { path: templatePath }));
-    return;
-  }
-
   const claudeMd = readFileSync(claudePath, "utf8");
   const rxId = nextRetroId(claudeMd);
   const agreedAnchor = cfg.consensus.sections?.agreed_anchor ?? "합의완료";
   const agreedItems = extractAgreedContext(claudeMd, agreedAnchor);
-  const prompt = buildPrompt(templatePath, rxId, agreedItems);
 
-  console.log(t("retro.invoking", { rx_id: rxId }));
+  // 마커 파일 작성 — session-gate.mjs가 다음 PreToolUse에서 감지
+  // session_id는 index.mjs → respond.mjs → retrospective.mjs로 env 전파됨
+  const sessionId = process.env.RETRO_SESSION_ID || null;
+  if (!existsSync(MARKER_DIR)) mkdirSync(MARKER_DIR, { recursive: true });
+  writeFileSync(MARKER_PATH, JSON.stringify({
+    retro_pending: true,
+    session_id: sessionId,
+    rx_id: rxId,
+    agreed_items: agreedItems,
+    instructions_shown: false,
+    created_at: new Date().toISOString(),
+  }, null, 2), "utf8");
 
-  // FEEDBACK_LOOP_ACTIVE=1 — prevents the hook from firing recursively inside the child claude -p session.
-  const claudeBin = resolveBinary("claude", "CLAUDE_BIN");
-  const result = spawnResolved(claudeBin, ["-p"], {
-    cwd: repoRoot,
-    input: prompt,
-    stdio: ["pipe", "inherit", "inherit"],
-    env: { ...process.env, FEEDBACK_LOOP_ACTIVE: "1" },
-    encoding: "utf8",
-  });
-
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    console.log(t("retro.claude_failed", { code: result.status ?? 1 }));
-    return;
-  }
-
-  // Verify that the RX entry was actually written to the watch file after claude -p completed.
-  const claudeMdAfter = existsSync(claudePath) ? readFileSync(claudePath, "utf8") : "";
-  if (!claudeMdAfter.includes(rxId)) {
-    console.log(t("retro.no_rx_written", { rx_id: rxId }));
-    return;
-  }
-
-  console.log(t("retro.done", { rx_id: rxId }));
-
-  // Immediately trigger the next audit cycle.
-  const auditScript = resolve(__dirname, cfg.plugin.audit_script ?? "audit.mjs");
-  if (existsSync(auditScript)) {
-    console.log(t("retro.audit_trigger"));
-    const auditResult = spawnResolved(process.execPath, [auditScript], {
-      cwd: repoRoot,
-      stdio: ["ignore", "inherit", "inherit"],
-      encoding: "utf8",
-    });
-    if (auditResult.error) {
-      console.error(`audit failed: ${auditResult.error.message}`);
-    }
-  }
+  console.log(t("retro.marker_set", { rx_id: rxId }));
 }
 
 try {
   main();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`retrospective failed: ${message}`);
+  console.error(`retrospective marker failed: ${message}`);
   process.exit(1);
 }

@@ -10,51 +10,25 @@
  * All behavior is controlled by config.json.
  */
 import { readFileSync, existsSync, appendFileSync, statSync, writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
-import { createT } from "./i18n.mjs";
+import {
+  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus as c,
+  findWatchFile, findRespondFile, t,
+} from "./context.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..", "..", "..");
-const cfg = JSON.parse(readFileSync(resolve(__dirname, "config.json"), "utf8"));
-const c = cfg.consensus;
-const plugin = cfg.plugin;
-const t = createT(plugin.locale ?? "en");
-
-const debugLog = resolve(__dirname, plugin.debug_log);
-const ackFile  = resolve(__dirname, plugin.ack_file);
+const debugLog = resolve(HOOKS_DIR, plugin.debug_log);
+const ackFile  = resolve(HOOKS_DIR, plugin.ack_file);
 
 function log(msg) {
   const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
   appendFileSync(debugLog, `[${ts}] ${msg}\n`);
 }
 
-function find_watch_file() {
-  const name    = c.watch_file.split("/").pop();
-  const subPath = c.watch_file.split("/").slice(0, -1).join("/");
-  const dirs    = [resolve(__dirname, subPath), resolve(repoRoot, subPath)];
-  for (const dir of dirs) {
-    for (const v of [name, name.toUpperCase(), name.toLowerCase()]) {
-      const p = resolve(dir, v);
-      if (existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-function find_respond_file() {
-  const respondName = plugin.respond_file ?? "gpt.md";
-  const subPath = c.watch_file.split("/").slice(0, -1).join("/");
-  const dirs    = [resolve(__dirname, subPath), resolve(repoRoot, subPath)];
-  for (const dir of dirs) {
-    for (const v of [respondName, respondName.toUpperCase(), respondName.toLowerCase()]) {
-      const p = resolve(dir, v);
-      if (existsSync(p)) return p;
-    }
-  }
-  return null;
-}
+// 경로 해석은 context.mjs의 메모이제이션된 findWatchFile/findRespondFile 사용
+const find_watch_file = findWatchFile;
+const find_respond_file = findRespondFile;
 
 function get_mtime(p) { try { return statSync(p).mtimeMs; } catch { return 0; } }
 function read_ack()   { try { return Number(readFileSync(ackFile, "utf8").trim()) || 0; } catch { return 0; } }
@@ -66,19 +40,21 @@ function has_agreed(content)  { return !content.includes(c.trigger_tag); }
 function run_script(absPath, args = []) {
   if (!existsSync(absPath)) { log(`SKIP: ${absPath} not found`); return null; }
   const result = spawnSync(process.execPath, [absPath, ...args], {
-    cwd: repoRoot,
+    cwd: REPO_ROOT,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
     env: { ...process.env, FEEDBACK_LOOP_ACTIVE: "1" },
   });
   if (result.error) { log(`ERROR: ${result.error.message}`); return null; }
+  const err = (result.stderr || "").trim();
+  if (err) log(`STDERR: ${err.split("\n")[0]}`);
   const out = (result.stdout || "").trim();
   if (out) log(`OUT: ${out.split("\n")[0]}`);
   return { status: result.status, stdout: out };
 }
 
 function read_session_id() {
-  const sessionPath = resolve(__dirname, plugin.session_file);
+  const sessionPath = resolve(HOOKS_DIR, plugin.session_file);
   try {
     const stored = JSON.parse(readFileSync(sessionPath, "utf8"));
     return stored.id || null;
@@ -101,7 +77,7 @@ function run_audit() {
   const respondPath = find_respond_file();
   const mtimeBefore = respondPath ? get_mtime(respondPath) : 0;
 
-  const result = run_script(resolve(__dirname, plugin.audit_script));
+  const result = run_script(resolve(HOOKS_DIR, plugin.audit_script));
   if (!result) { process.stdout.write(t("index.audit.failed")); return; }
   if (result.status !== 0) { process.stdout.write(t("index.audit.exit_abnormal", { code: result.status })); return; }
   if (result.stdout) process.stdout.write(t("index.audit.output", { out: result.stdout }));
@@ -109,8 +85,19 @@ function run_audit() {
   const respondPathNow = find_respond_file();
   if (respondPathNow && existsSync(respondPathNow)) {
     const mtimeAfter     = get_mtime(respondPathNow);
-    const content_respond = readFileSync(respondPathNow, "utf8");
+    let content_respond = readFileSync(respondPathNow, "utf8");
     const content_watch  = watchPath ? readFileSync(watchPath, "utf8") : "";
+
+    // 감사 완료 타임스탬프를 gpt.md 하단에 시스템적으로 추가
+    const ts = new Date().toISOString().replace("T", " ").slice(0, 16);
+    const tsLine = `\n---\n> 감사 완료: ${ts}\n`;
+    if (!content_respond.includes(`감사 완료: ${ts}`)) {
+      // 기존 타임스탬프 라인 제거 후 새 타임스탬프 추가
+      content_respond = content_respond.replace(/\n---\n> 감사 완료: .+\n/g, "");
+      content_respond = content_respond.trimEnd() + tsLine;
+      writeFileSync(respondPathNow, content_respond, "utf8");
+    }
+
     write_ack(Date.now());
 
     if (has_agreed(content_watch)) {
@@ -134,7 +121,7 @@ function check_pending_response() {
 
   if (respondMtime > watchMtime && respondMtime > lastAck) {
     log("NOTIFY: pending response — auto-sync");
-    const result = run_script(resolve(__dirname, plugin.respond_script));
+    const result = run_script(resolve(HOOKS_DIR, plugin.respond_script));
     write_ack(Math.max(respondMtime, get_mtime(respondPath)));
     const content_watch = readFileSync(watchPath, "utf8");
     if (result?.stdout) process.stdout.write(t("index.sync.output", { out: result.stdout }));
@@ -162,7 +149,7 @@ function run_quality_checks(filePath) {
 
     const cmd = rule.command.replace("{file}", filePath.replace(/"/g, '\\"'));
     const result = spawnSync(cmd, {
-      cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: true,
+      cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: true,
     });
     const output = ((result.stdout || "") + (result.stderr || "")).trim();
     if (result.status !== 0 && output) {
@@ -194,6 +181,12 @@ async function main() {
     return;
   }
 
+  // session_id를 env로 전파 — 하위 스크립트(retrospective.mjs)가 마커에 기록
+  const sessionId = payload?.session_id || "";
+  if (sessionId) {
+    process.env.RETRO_SESSION_ID = sessionId;
+  }
+
   const filePath = String(payload?.tool_input?.file_path ?? "");
   log(`file_path=${filePath}`);
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
@@ -221,7 +214,7 @@ async function main() {
       process.stdout.write(t("index.dry_run.planning", { script: plugin.respond_script }));
       return;
     }
-    const result = run_script(resolve(__dirname, plugin.respond_script), ["--gpt-only"]);
+    const result = run_script(resolve(HOOKS_DIR, plugin.respond_script), ["--gpt-only"]);
     if (result?.stdout) process.stdout.write(t("index.planning.sync", { out: result.stdout }));
     write_ack(Date.now());
     return;
