@@ -70,5 +70,24 @@
   "pdoc.no_promotion_target": "- 현재 승격할 다음 작업 없음",
   "pdoc.no_next_task": "현재 등록된 다음 작업 없음",
   "pdoc.close_task": "{label}를 닫기",
-  "pdoc.close_tasks": "{head}와 {last}를 닫기"
+  "pdoc.close_tasks": "{head}와 {last}를 닫기",
+
+  "index.format.missing_section": "[FORMAT_MISSING_SECTION] '### {label}' 섹션이 없습니다.",
+  "index.format.glob_in_test": "[FORMAT_GLOB_IN_TEST] Test Command에 glob 패턴이 포함되어 있습니다. 명시적 파일 목록을 사용하세요.",
+  "index.format.empty_result": "[FORMAT_EMPTY_RESULT] Test Result가 비어있거나 너무 짧습니다. 터미널 출력을 복붙하세요.",
+  "index.format.check_header": "\n[FORMAT-CHECK] 증거 패키지 형식 오류 — 감사를 건너뜁니다.\n아래 항목을 보충한 후 다시 제출하세요:\n\n{errors}\n\n에러 코드: FORMAT_INCOMPLETE\n",
+  "index.timestamp.label": "감사 완료",
+
+  "gate.protocol": "\n[SESSION SELF-IMPROVEMENT PROTOCOL]\n감사 사이클이 완료되었습니다. 커밋 전 회고 프로토콜을 수행하세요.\n\n## 합의 완료 항목\n{context}\n\n## 수행 절차\n1. 회고 — 이번 사이클에서 잘된 것 / 문제인 것\n2. 피드백 — 사용자와 양방향 교환\n3. 메모리 정리 — 중복/stale 항목 제거\n4. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록 (진행중/대기/완료)\n5. 저장소 동기화 — node .claude/scripts/sync-handoff.mjs → git add/commit\n6. 완료 후: echo session-self-improvement-complete\n\n[Bash/Agent 차단 중 — 프로토콜 완료 시 해제]\n",
+  "gate.blocked": "[SESSION GATE] 회고 프로토콜 미완료 — {tool} 차단됨.\nRead/Write/Edit로 메모리 정리 후 'echo session-self-improvement-complete'를 실행하세요.\n",
+
+  "pdoc.title": "# 피드백 승격 인덱스",
+  "pdoc.meta": "> 상태: `active` | 유형: 피드백 루프 승격 기준 | 생성: `.claude/hooks/consensus-loop/respond.mjs`",
+  "pdoc.purpose_heading": "## 목적",
+  "pdoc.purpose_body": "`{feedback_glob}`의 현재 감사 트랙이 완전히 `{agree_tag}`로 닫히면,\n다음 작업은 임의로 쓰지 않고 이 문서에서 자동 승격한다.\n\n이 문서는 `feedback-promotion.plan.json`, 현재 `{gpt_file}` 판정,\n그리고 `{watch_file}`의 `## {agreed_anchor}` 앵커를 바탕으로\n**자동 생성**된다.",
+  "pdoc.rule_heading": "## 사용 규칙",
+  "pdoc.rule_body": "- 현재 감사 범위가 모두 `{agree_tag}`이면 `{gpt_file}`의 `## {next_task}`은 이 문서의 `## {promotion_target}` 첫 항목을 사용한다.\n- `{feedback_glob}`에 남아 있는 별도 `{pending_tag}` 감사 항목은, 이미 합의된 트랙의 다음 improved 작업 승격을 자동으로 막지 않는다.",
+  "pdoc.agreed_heading": "## 현재 합의된 트랙",
+  "pdoc.target_heading": "## 현재 승격 대상",
+  "pdoc.source_heading": "## 근거 문서"
 }

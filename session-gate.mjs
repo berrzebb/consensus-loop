@@ -2,10 +2,10 @@
 /* global process, Buffer */
 
 /**
- * PreToolUse hook: 세션 자가 개선 프로토콜 게이트.
+ * PreToolUse hook: session self-improvement protocol gate.
  *
- * 1. 마커 파일 먼저 확인 — retro_pending이 아니면 stdin도 읽지 않고 즉시 종료 (최소 오버헤드)
- * 2. retro_pending일 때만 stdin 파싱 → 도구별 허용/차단 판단
+ * 1. Check marker file first — exit immediately without reading stdin if not retro_pending (minimal overhead)
+ * 2. Only parse stdin when retro_pending → per-tool allow/block decision
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -31,11 +31,14 @@ function write_marker(data) {
   writeFileSync(MARKER_PATH, JSON.stringify(data, null, 2), "utf8");
 }
 
-// 마커 확인 — retro_pending이 아니면 즉시 종료
+// Check marker — exit immediately if not retro_pending
 const marker = read_marker();
 if (!marker || !marker.retro_pending) {
   process.exit(0);
 }
+
+// Load i18n only when retro is pending (avoid overhead on every tool call)
+const { t } = await import("./context.mjs");
 
 // retro_pending일 때만 stdin 읽기
 let raw;
@@ -52,7 +55,7 @@ if (!raw) { process.exit(0); }
 let input;
 try { input = JSON.parse(raw); } catch { process.exit(0); }
 
-// 세션 독립성: 마커의 session_id와 현재 세션이 다르면 통과
+// Session isolation: pass through if marker's session_id differs from current
 const current_session = input.session_id || "";
 if (marker.session_id && current_session && marker.session_id !== current_session) {
   process.exit(0);
@@ -60,7 +63,7 @@ if (marker.session_id && current_session && marker.session_id !== current_sessio
 
 const tool_name = input.tool_name || "";
 
-// completion 커맨드 → 마커 해제
+// Completion command → release marker
 if (tool_name === "Bash") {
   const command = input.tool_input?.command || "";
   if (command.includes(COMPLETION_CMD)) {
@@ -72,30 +75,16 @@ if (tool_name === "Bash") {
   }
 }
 
-// 메모리 작업용 도구 → 허용
+// Memory-related tools → allow
 if (ALLOWED_TOOLS.includes(tool_name)) {
   if (!marker.instructions_shown) {
     write_marker({ ...marker, instructions_shown: true });
-    const context = marker.agreed_items || "없음";
-    process.stdout.write(
-      `\n[SESSION SELF-IMPROVEMENT PROTOCOL]\n` +
-      `감사 사이클이 완료되었습니다. 커밋 전 회고 프로토콜을 수행하세요.\n\n` +
-      `## 합의 완료 항목\n${context}\n\n` +
-      `## 수행 절차\n` +
-      `1. 회고 — 이번 사이클에서 잘된 것 / 문제인 것\n` +
-      `2. 피드백 — 사용자와 양방향 교환\n` +
-      `3. 메모리 정리 — 중복/stale 항목 제거\n` +
-      `4. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록 (진행중/대기/완료)\n` +
-      `5. 완료 후: echo session-self-improvement-complete\n\n` +
-      `[Bash/Agent 차단 중 — 프로토콜 완료 시 해제]\n`
-    );
+    const context = marker.agreed_items || t("retro.no_agreed_items");
+    process.stdout.write(t("gate.protocol", { context }));
   }
   process.exit(0);
 }
 
-// Bash/Agent 등 → 차단
-process.stdout.write(
-  `[SESSION GATE] 회고 프로토콜 미완료 — ${tool_name} 차단됨.\n` +
-  `Read/Write/Edit로 메모리 정리 후 'echo session-self-improvement-complete'를 실행하세요.\n`
-);
+// Bash/Agent etc. → block
+process.stdout.write(t("gate.blocked", { tool: tool_name }));
 process.exit(2);

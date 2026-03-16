@@ -26,11 +26,11 @@ function log(msg) {
   appendFileSync(debugLog, `[${ts}] ${msg}\n`);
 }
 
-// 경로 해석은 context.mjs의 메모이제이션된 findWatchFile/findRespondFile 사용
+// Use memoized path resolvers from context.mjs
 const find_watch_file = findWatchFile;
 const find_respond_file = findRespondFile;
 
-/** 증거 패키지 형식 사전 검증 — 정규식 기반, 토큰 0. */
+/** Pre-validate evidence package format — regex-based, zero tokens. */
 function validate_evidence_format(content) {
   const errors = [];
   const triggerSection = content.split(/^## /m).find((s) => s.includes(c.trigger_tag));
@@ -46,23 +46,23 @@ function validate_evidence_format(content) {
 
   for (const { label, pattern } of required) {
     if (!pattern.test(triggerSection)) {
-      errors.push(`[FORMAT_MISSING_SECTION] '### ${label}' 섹션이 없습니다.`);
+      errors.push(t("index.format.missing_section", { label }));
     }
   }
 
-  // Test Command에 glob 사용 여부
+  // Check for glob usage in Test Command
   if (/### Test Command/.test(triggerSection)) {
     const cmdSection = triggerSection.split(/### Test Command/i)[1]?.split(/### /)[0] || "";
     if (/\*\*?\/|\*\.\w+/.test(cmdSection)) {
-      errors.push("[FORMAT_GLOB_IN_TEST] Test Command에 glob 패턴이 포함되어 있습니다. 명시적 파일 목록을 사용하세요.");
+      errors.push(t("index.format.glob_in_test"));
     }
   }
 
-  // Test Result가 비어있는지
+  // Check if Test Result is empty
   if (/### Test Result/.test(triggerSection)) {
     const resultSection = triggerSection.split(/### Test Result/i)[1]?.split(/### /)[0] || "";
     if (resultSection.trim().length < 10) {
-      errors.push("[FORMAT_EMPTY_RESULT] Test Result가 비어있거나 너무 짧습니다. 터미널 출력을 복붙하세요.");
+      errors.push(t("index.format.empty_result"));
     }
   }
 
@@ -126,16 +126,6 @@ function run_audit() {
     const mtimeAfter     = get_mtime(respondPathNow);
     let content_respond = readFileSync(respondPathNow, "utf8");
     const content_watch  = watchPath ? readFileSync(watchPath, "utf8") : "";
-
-    // 감사 완료 타임스탬프를 gpt.md 하단에 시스템적으로 추가
-    const ts = new Date().toISOString().replace("T", " ").slice(0, 16);
-    const tsLine = `\n---\n> 감사 완료: ${ts}\n`;
-    if (!content_respond.includes(`감사 완료: ${ts}`)) {
-      // 기존 타임스탬프 라인 제거 후 새 타임스탬프 추가
-      content_respond = content_respond.replace(/\n---\n> 감사 완료: .+\n/g, "");
-      content_respond = content_respond.trimEnd() + tsLine;
-      writeFileSync(respondPathNow, content_respond, "utf8");
-    }
 
     write_ack(Date.now());
 
@@ -226,7 +216,7 @@ async function main() {
     return;
   }
 
-  // session_id를 env로 전파 — 하위 스크립트(retrospective.mjs)가 마커에 기록
+  // Propagate session_id via env — downstream scripts (retrospective.mjs) record it in markers
   const sessionId = payload?.session_id || "";
   if (sessionId) {
     process.env.RETRO_SESSION_ID = sessionId;
@@ -249,15 +239,11 @@ async function main() {
     const content = readFileSync(watchPath, "utf8");
     if (!has_trigger(content)) { log("EXIT: no trigger_tag"); return; }
 
-    // 형식 사전 검증 — 토큰 0, Codex 호출 전 차단
+    // Pre-validate format — zero tokens, blocks before Codex invocation
     const formatErrors = validate_evidence_format(content);
     if (formatErrors.length > 0) {
       const errorList = formatErrors.map((e) => `  • ${e}`).join("\n");
-      process.stdout.write(
-        `\n[FORMAT-CHECK] 증거 패키지 형식 오류 — 감사를 건너뜁니다.\n` +
-        `아래 항목을 보충한 후 다시 제출하세요:\n\n${errorList}\n\n` +
-        `에러 코드: FORMAT_INCOMPLETE\n`
-      );
+      process.stdout.write(t("index.format.check_header", { errors: errorList }));
       log(`FORMAT_INCOMPLETE: ${formatErrors.length} errors`);
       return;
     }

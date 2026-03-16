@@ -1,42 +1,42 @@
 #!/usr/bin/env node
 /**
- * 공유 컨텍스트 모듈 — config, 경로, 태그 상수, 마크다운 파서, i18n 캐시.
+ * Shared context module — config, paths, tag constants, markdown parser, i18n cache.
  *
- * 모든 consensus-loop 스크립트는 이 모듈에서 import하여
- * config.json 중복 파싱, 경로 중복 해석, 함수 중복 구현을 제거한다.
+ * All consensus-loop scripts import from this module to avoid
+ * duplicate config parsing, path resolution, and function implementations.
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// ── 경로 ──────────────────────────────────────────────────
+// ── Paths ─────────────────────────────────────────────────
 export const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HOOKS_DIR, "..", "..", "..");
 
-// ── config ────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────
 export const cfg = JSON.parse(readFileSync(resolve(HOOKS_DIR, "config.json"), "utf8"));
 export const plugin = cfg.plugin;
 export const consensus = cfg.consensus;
 
-// ── 섹션 이름 상수 ────────────────────────────────────────
+// ── Section name constants (English defaults; config overrides) ──
 const S = consensus.sections ?? {};
 export const SEC = {
-  auditScope:         S.audit_scope         ?? "감사 범위",
-  finalVerdict:       S.final_verdict       ?? "최종 판정",
-  agreedAnchor:       S.agreed_anchor       ?? "합의완료",
-  resetCriteria:      S.reset_criteria      ?? "완료 기준 재고정",
-  rejectCodes:        S.reject_codes        ?? "반려 코드",
-  additionalTasks:    S.additional_tasks    ?? "추가 작업",
-  nextTask:           S.next_task           ?? "다음 작업",
-  deprecatedProtocol: S.deprecated_protocol ?? "개선된 프로토콜",
-  promotionTarget:    S.promotion_target    ?? "현재 승격 대상",
-  changedFiles:       S.changed_files       ?? "변경 파일",
+  auditScope:         S.audit_scope         ?? "Audit Scope",
+  finalVerdict:       S.final_verdict       ?? "Final Verdict",
+  agreedAnchor:       S.agreed_anchor       ?? "Agreed",
+  resetCriteria:      S.reset_criteria      ?? "Reset Criteria",
+  rejectCodes:        S.reject_codes        ?? "Reject Codes",
+  additionalTasks:    S.additional_tasks    ?? "Additional Tasks",
+  nextTask:           S.next_task           ?? "Next Task",
+  deprecatedProtocol: S.deprecated_protocol ?? "Improved Protocol",
+  promotionTarget:    S.promotion_target    ?? "Current Promotion Target",
+  changedFiles:       S.changed_files       ?? "Changed Files",
 };
 
 export const DOC_PATTERNS = consensus.doc_patterns ?? {};
 
-// ── 태그 상수 + 정규식 ───────────────────────────────────
+// ── Tag constants + regex ─────────────────────────────────
 export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const triggerInner = consensus.trigger_tag.replace(/^\[|\]$/g, "");
@@ -50,7 +50,7 @@ export const STATUS_TAG_RE_GLOBAL = new RegExp(
   "`?\\[(" + tagAlts + ")(?:[^\\]]*?)\\]`?", "g",
 );
 
-// ── 경로 해석 (메모이제이션) ─────────────────────────────
+// ── Path resolution (memoized) ────────────────────────────
 let _watchPath = undefined;
 let _respondPath = undefined;
 
@@ -81,13 +81,13 @@ export function findRespondFile() {
   return _respondPath;
 }
 
-/** 메모이제이션 캐시 초기화 — 테스트용 */
+/** Reset memoization cache — for testing. */
 export function resetPathCache() {
   _watchPath = undefined;
   _respondPath = undefined;
 }
 
-// ── i18n (캐시) ──────────────────────────────────────────
+// ── i18n (cached) ─────────────────────────────────────────
 const localeCache = new Map();
 
 export function createT(locale) {
@@ -113,9 +113,9 @@ export function createT(locale) {
 
 export const t = createT(plugin.locale ?? "en");
 
-// ── 마크다운 파서 ────────────────────────────────────────
+// ── Markdown parser ───────────────────────────────────────
 
-/** 라인에서 상태 태그를 추출. 여러 태그가 있으면 마지막(최신)이 우선. */
+/** Extract status tag from a line. When multiple tags exist, the last (newest) wins. */
 export function extractStatusFromLine(line) {
   const match = line.match(STATUS_TAG_RE);
   if (!match) return null;
@@ -125,7 +125,7 @@ export function extractStatusFromLine(line) {
   return statuses.at(-1) ?? null;
 }
 
-/** 마크다운에서 `## heading` 섹션을 찾아 { start, end, lines }를 반환. */
+/** Find a `## heading` section in markdown and return { start, end, lines }. */
 export function readSection(markdown, heading) {
   const lines = typeof markdown === "string" ? markdown.split(/\r?\n/) : markdown;
   const start = lines.findIndex((line) =>
@@ -142,7 +142,7 @@ export function readSection(markdown, heading) {
   };
 }
 
-/** 섹션을 교체. 섹션이 없으면 파일 끝에 추가. */
+/** Replace a section. Appends to end of file if section not found. */
 export function replaceSection(markdown, heading, replacementLines) {
   const lines = markdown.split(/\r?\n/);
   const section = readSection(lines, heading);
@@ -153,7 +153,7 @@ export function replaceSection(markdown, heading, replacementLines) {
   return `${markdown.replace(/\s*$/, "")}\n\n${replacementLines.join("\n")}\n`;
 }
 
-/** 섹션을 제거. */
+/** Remove a section. */
 export function removeSection(markdown, heading) {
   const lines = markdown.split(/\r?\n/);
   const section = readSection(lines, heading);
@@ -162,7 +162,7 @@ export function removeSection(markdown, heading) {
   return `${lines.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s*$/, "")}\n`;
 }
 
-/** 상태 태그가 있는 모든 라인을 파싱. */
+/** Parse all lines containing status tags. */
 export function parseStatusLines(markdown) {
   const items = [];
   for (const line of markdown.split(/\r?\n/)) {
@@ -194,7 +194,7 @@ export function replaceStatusTag(line, status) {
   return line.replace(STATUS_TAG_RE, `[${status}]`);
 }
 
-/** 라인에서 ID(예: TN-1, FE-6A, E1)를 추출. 범위(TN-1~TN-6)도 지원. */
+/** Extract IDs (e.g. TN-1, FE-6A, E1) from a line. Supports ranges (TN-1~TN-6). */
 export function collectIdsFromLine(line) {
   const ids = new Set();
 
@@ -220,7 +220,7 @@ export function collectIdsFromLine(line) {
   return [...ids];
 }
 
-/** 불릿 섹션에서 `- ` 항목만 추출. */
+/** Extract `- ` bullet items from a section. */
 export function readBulletSection(markdown, heading) {
   const section = readSection(markdown, heading);
   if (!section) return [];
@@ -230,14 +230,14 @@ export function readBulletSection(markdown, heading) {
     .map((line) => line.replace(/^- /, "").trim());
 }
 
-/** 빈 마커 (해당 없음, 없음, none) 판별. */
+/** Check for empty markers (해당 없음, 없음, none). */
 export function isEmptyMarker(line) {
   return new RegExp(
     `^\`?(${DOC_PATTERNS.empty_markers ?? "해당 없음|없음|none"})\`?$`, "i"
   ).test(line.trim());
 }
 
-/** 마크다운에서 합의완료 ID를 추출. */
+/** Extract approved IDs from markdown. */
 export function extractApprovedIds(markdown) {
   const ids = new Set();
   for (const line of markdown.split(/\r?\n/)) {
@@ -247,7 +247,7 @@ export function extractApprovedIds(markdown) {
   return ids;
 }
 
-/** 마크다운에서 계류 ID를 추출. */
+/** Extract pending IDs from markdown. */
 export function extractPendingIds(markdown) {
   const ids = new Set();
   for (const line of markdown.split(/\r?\n/)) {
@@ -257,7 +257,7 @@ export function extractPendingIds(markdown) {
   return ids;
 }
 
-/** 특정 섹션에서 합의완료 ID를 추출. */
+/** Extract approved IDs from a specific section. */
 export function extractApprovedIdsFromSection(markdown, heading) {
   const section = readSection(markdown, heading);
   return section ? extractApprovedIds(section.lines.join("\n")) : new Set();
