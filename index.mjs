@@ -162,14 +162,18 @@ function check_pending_response() {
     log("NOTIFY: pending response — auto-sync");
     const result = run_script(resolve(HOOKS_DIR, plugin.respond_script));
     write_ack(Math.max(respondMtime, get_mtime(respondPath)));
-    const content_watch = readFileSync(watchPath, "utf8");
     if (result?.stdout) process.stdout.write(t("index.sync.output", { out: result.stdout }));
 
-    if (has_agreed(content_watch)) {
-      process.stdout.write(t("index.sync.arrived_agreed", { tag: c.agree_tag }));
-    } else {
-      const content_respond = readFileSync(respondPath, "utf8");
-      process.stdout.write(t("index.sync.arrived_pending", { tag: c.pending_tag, content: content_respond }));
+    try {
+      const content_watch = readFileSync(watchPath, "utf8");
+      if (has_agreed(content_watch)) {
+        process.stdout.write(t("index.sync.arrived_agreed", { tag: c.agree_tag }));
+      } else {
+        const content_respond = readFileSync(respondPath, "utf8");
+        process.stdout.write(t("index.sync.arrived_pending", { tag: c.pending_tag, content: content_respond }));
+      }
+    } catch (err) {
+      log(`WARN: readFileSync failed in check_pending_response: ${err.message}`);
     }
   }
 }
@@ -186,9 +190,11 @@ function run_quality_checks(filePath) {
     if (m.filenames && !m.filenames.includes(filename)) continue;
     if (normalized.includes("/node_modules/")) continue;
 
-    const cmd = rule.command.replace("{file}", filePath.replace(/"/g, '\\"'));
+    // Shell injection 방지: filePath를 환경변수로 전달하여 쉘 메타문자 무력화
+    const cmd = rule.command.replace("{file}", "$HOOK_TARGET_FILE");
     const result = spawnSync(cmd, {
       cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: true,
+      env: { ...process.env, HOOK_TARGET_FILE: filePath },
     });
     const output = ((result.stdout || "") + (result.stderr || "")).trim();
     if (result.status !== 0 && output) {
