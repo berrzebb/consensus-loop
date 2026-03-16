@@ -10,21 +10,14 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createT } from "./i18n.mjs";
+import { resolve } from "node:path";
+import {
+  HOOKS_DIR, cfg, t, findWatchFile,
+} from "./context.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..", "..", "..");
-const cfg = JSON.parse(readFileSync(resolve(__dirname, "config.json"), "utf8"));
-const t = createT(cfg.plugin.locale ?? "en");
-
-const MARKER_DIR = resolve(__dirname, ".session-state");
+const MARKER_DIR = resolve(HOOKS_DIR, ".session-state");
 const MARKER_PATH = resolve(MARKER_DIR, "retro-marker.json");
-
-const claudePathPlugin = resolve(__dirname, cfg.consensus.watch_file);
-const claudePathRepo   = resolve(repoRoot, cfg.consensus.watch_file);
-const claudePath = existsSync(claudePathPlugin) ? claudePathPlugin : claudePathRepo;
+const claudePath = findWatchFile();
 
 /** RX-N 시퀀스 다음 번호 산출. */
 function nextRetroId(claudeMd) {

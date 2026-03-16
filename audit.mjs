@@ -336,7 +336,7 @@ function buildCodexArgs(args, resumeTarget) {
   const base = [
     "exec",
     "-C",
-    repoRoot,
+    REPO_ROOT,
   ];
 
   if (wantsFullAccess) {
