@@ -79,7 +79,8 @@ if (ALLOWED_TOOLS.includes(tool_name)) {
       `1. 회고 — 이번 사이클에서 잘된 것 / 문제인 것\n` +
       `2. 피드백 — 사용자와 양방향 교환\n` +
       `3. 메모리 정리 — 중복/stale 항목 제거\n` +
-      `4. 완료 후: echo session-self-improvement-complete\n\n` +
+      `4. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록 (진행중/대기/완료)\n` +
+      `5. 완료 후: echo session-self-improvement-complete\n\n` +
       `[Bash/Agent 차단 중 — 프로토콜 완료 시 해제]\n`
     );
   }
