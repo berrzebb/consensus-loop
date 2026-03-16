@@ -2,24 +2,24 @@
 /* global process, console */
 
 /**
- * 감사 사이클 완료 후 회고 마커를 설정.
+ * Set retrospective marker after audit cycle completion.
  *
- * respond.mjs에서 모든 감사 항목이 [합의완료]일 때 호출됨.
- * 기존: claude -p로 외부 에이전트 실행 (HITL 불가, 통제 불가)
- * 변경: 마커 파일만 작성 → session-gate.mjs가 메인 세션에서 회고 강제 (HITL 가능)
+ * Called by respond.mjs when all audit items are agreed.
+ * Previous: ran external agent via claude -p (no HITL, no control)
+ * Current: writes marker file only → session-gate.mjs enforces retro in main session (HITL capable)
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  HOOKS_DIR, cfg, t, findWatchFile,
+  HOOKS_DIR, cfg, SEC, t, findWatchFile,
 } from "./context.mjs";
 
 const MARKER_DIR = resolve(HOOKS_DIR, ".session-state");
 const MARKER_PATH = resolve(MARKER_DIR, "retro-marker.json");
 const claudePath = findWatchFile();
 
-/** RX-N 시퀀스 다음 번호 산출. */
+/** Compute next RX-N sequence number. */
 function nextRetroId(claudeMd) {
   const matches = claudeMd.match(/\bRX-(\d+)\b/g) ?? [];
   const nums = matches.map((m) => parseInt(m.slice(3), 10));
@@ -27,7 +27,7 @@ function nextRetroId(claudeMd) {
   return `RX-${max + 1}`;
 }
 
-/** 합의완료 섹션에서 최근 항목 추출. */
+/** Extract recent items from the agreed anchor section. */
 function extractAgreedContext(claudeMd, agreedAnchor) {
   const lines = claudeMd.split(/\r?\n/);
   const anchorRe = new RegExp(`^##\\s+${agreedAnchor}\\s*$`);
@@ -50,11 +50,11 @@ function main() {
 
   const claudeMd = readFileSync(claudePath, "utf8");
   const rxId = nextRetroId(claudeMd);
-  const agreedAnchor = cfg.consensus.sections?.agreed_anchor ?? "합의완료";
+  const agreedAnchor = SEC.agreedAnchor;
   const agreedItems = extractAgreedContext(claudeMd, agreedAnchor);
 
-  // 마커 파일 작성 — session-gate.mjs가 다음 PreToolUse에서 감지
-  // session_id는 index.mjs → respond.mjs → retrospective.mjs로 env 전파됨
+  // Write marker file — session-gate.mjs picks it up on next PreToolUse
+  // session_id is propagated via env: index.mjs → respond.mjs → retrospective.mjs
   const sessionId = process.env.RETRO_SESSION_ID || null;
   if (!existsSync(MARKER_DIR)) mkdirSync(MARKER_DIR, { recursive: true });
   writeFileSync(MARKER_PATH, JSON.stringify({

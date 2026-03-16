@@ -12,6 +12,20 @@ import {
   findWatchFile, extractStatusFromLine, readSection,
 } from "./context.mjs";
 
+/** Append audit-completed timestamp to gpt.md (idempotent). */
+function stampAuditCompleted(path) {
+  if (!existsSync(path)) return;
+  let content = readFileSync(path, "utf8");
+  const ts = new Date().toISOString().replace("T", " ").slice(0, 16);
+  const tsLabel = t("index.timestamp.label");
+  const tsLine = `\n---\n> ${tsLabel}: ${ts}\n`;
+  if (content.includes(`${tsLabel}: ${ts}`)) return;
+  // Remove any previous timestamp line, then append new one
+  content = content.replace(/\n---\n> [^:]+: \d{4}-\d{2}-\d{2} \d{2}:\d{2}\n/g, "");
+  content = content.trimEnd() + tsLine;
+  writeFileSync(path, content, "utf8");
+}
+
 const promptTemplatePath = resolve(HOOKS_DIR, plugin.audit_prompt);
 
 // Lazy-initialized in main() — avoid dirname(null) crash at module load time.
@@ -167,7 +181,7 @@ function deleteSavedSessionId() {
   }
 }
 
-// extractStatusFromLine → context.mjs에서 import
+// extractStatusFromLine → imported from context.mjs
 
 function hasPendingItems(markdown) {
   return new RegExp(`\\[(${escapeRe(triggerInner)}|${escapeRe(pendingInner)})\\]`).test(markdown);
@@ -364,13 +378,13 @@ function buildCodexArgs(args, resumeTarget) {
 const codexLogPath = resolve(HOOKS_DIR, "codex-session.log");
 
 function emitCodexOutput(stdout, stderr, rawJson) {
-  // Codex 세션 출력을 파일에 기록 — 디버깅용
+  // Log Codex session output to file — for debugging
   try {
     const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
     appendFileSync(codexLogPath, `\n=== [${ts}] Codex session output ===\n`);
     if (stdout) appendFileSync(codexLogPath, `[stdout]\n${stdout.slice(0, 5000)}\n`);
     if (stderr) appendFileSync(codexLogPath, `[stderr]\n${stderr.slice(0, 2000)}\n`);
-  } catch { /* 로깅 실패는 무시 */ }
+  } catch { /* ignore logging failures */ }
 
   let threadId = null;
   let sawJson = false;
@@ -503,7 +517,7 @@ function main() {
     input: prompt,
     stdio: ["pipe", "pipe", "pipe"],
     encoding: "utf8",
-    maxBuffer: 50 * 1024 * 1024, // 50MB — Codex JSON 이벤트 대량 출력 대응
+    maxBuffer: 50 * 1024 * 1024, // 50MB — handle large Codex JSON event streams
   });
 
   const { threadId } = emitCodexOutput(result.stdout ?? "", result.stderr ?? "", args.json);
@@ -535,6 +549,7 @@ function main() {
   }
 
   runRespond(args);
+  stampAuditCompleted(gptPath);
 }
 
 try {
