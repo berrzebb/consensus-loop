@@ -246,8 +246,9 @@ async function main() {
     process.env.RETRO_SESSION_ID = sessionId;
   }
 
+  const toolName = String(payload?.tool_name ?? "unknown");
   const filePath = String(payload?.tool_input?.file_path ?? "");
-  log(`file_path=${filePath}`);
+  log(`tool=${toolName} file_path=${filePath}`);
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
 
   // (C) Code quality immediate check (skip consensus watch_file)
