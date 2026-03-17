@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* global process, console */
 
-import { readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
@@ -13,8 +13,15 @@ import {
 } from "./context.mjs";
 
 const promptTemplatePath = resolve(HOOKS_DIR, plugin.audit_prompt);
-const claudePath = findWatchFile();
-const gptPath    = claudePath ? resolve(dirname(claudePath), plugin.respond_file ?? "gpt.md") : null;
+
+// Lazy-initialized in main() — avoid dirname(null) crash at module load time.
+let claudePath = null;
+let gptPath    = null;
+
+function initPaths() {
+  claudePath = findWatchFile();
+  gptPath = claudePath ? resolve(dirname(claudePath), plugin.respond_file ?? "gpt.md") : null;
+}
 const sessionPath = resolve(HOOKS_DIR, plugin.session_file);
 const planningDirs = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d));
 const promotionDocPaths = planningDirs.map((d) => resolve(d, "feedback-promotion.md"));
@@ -359,7 +366,6 @@ const codexLogPath = resolve(HOOKS_DIR, "codex-session.log");
 function emitCodexOutput(stdout, stderr, rawJson) {
   // Codex 세션 출력을 파일에 기록 — 디버깅용
   try {
-    const { appendFileSync } = require("node:fs");
     const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
     appendFileSync(codexLogPath, `\n=== [${ts}] Codex session output ===\n`);
     if (stdout) appendFileSync(codexLogPath, `[stdout]\n${stdout.slice(0, 5000)}\n`);
@@ -435,12 +441,14 @@ function runRespond(args) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
+  initPaths();
+
   if (args.resetSession) {
     deleteSavedSessionId();
   }
 
-  if (!existsSync(claudePath)) {
-    throw new Error(`Missing file: ${claudePath}`);
+  if (!claudePath || !existsSync(claudePath)) {
+    throw new Error(`Missing watch file: ${claudePath ?? consensus.watch_file}`);
   }
 
   const claudeMd = readFileSync(claudePath, "utf8");

@@ -38,9 +38,15 @@ if (!marker || !marker.retro_pending) {
 }
 
 // retro_pending일 때만 stdin 읽기
-const chunks = [];
-for await (const chunk of process.stdin) chunks.push(chunk);
-const raw = Buffer.concat(chunks).toString("utf8").trim();
+let raw;
+try {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  raw = Buffer.concat(chunks).toString("utf8").trim();
+} catch {
+  // stdin read error (e.g. closed unexpectedly) — fail open
+  process.exit(0);
+}
 if (!raw) { process.exit(0); }
 
 let input;
