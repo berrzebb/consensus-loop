@@ -9,7 +9,7 @@
  *
  * All behavior is controlled by config.json.
  */
-import { readFileSync, existsSync, appendFileSync, statSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync, statSync, writeFileSync, openSync, closeSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync, spawn } from "node:child_process";
@@ -133,17 +133,32 @@ function run_audit() {
   const logPath = resolve(HOOKS_DIR, "audit-bg.log");
   const logFd = openSync(logPath, "w");
 
-  const child = spawn(process.execPath, [auditScript], {
-    cwd: REPO_ROOT,
-    detached: true,
-    stdio: ["ignore", logFd, logFd],
-    env: { ...process.env, FEEDBACK_LOOP_ACTIVE: "1" },
+  let child;
+  try {
+    child = spawn(process.execPath, [auditScript], {
+      cwd: REPO_ROOT,
+      detached: true,
+      stdio: ["ignore", logFd, logFd],
+      env: { ...process.env, FEEDBACK_LOOP_ACTIVE: "1" },
+    });
+  } catch (err) {
+    closeSync(logFd);
+    log("SPAWN_ERROR: " + (err.message ?? err));
+    process.stdout.write(t("index.audit.failed"));
+    return;
+  }
+
+  // spawn 에러 핸들링 (ENOENT 등 — 비동기 에러)
+  child.on("error", (err) => {
+    log("CHILD_ERROR: " + (err.message ?? err));
+    try { rmSync(lockPath, { force: true }); } catch { /* ignore */ }
   });
 
   writeFileSync(lockPath, JSON.stringify({ pid: child.pid, startedAt: Date.now() }), "utf8");
   child.unref();
   closeSync(logFd);
 
+  log("AUDIT_STARTED: pid=" + child.pid);
   process.stdout.write(t("index.audit.started_async", { tag: c.trigger_tag, pid: child.pid, log: logPath }));
 }
 
