@@ -63,7 +63,7 @@
   "respond.retro.skipped_is_retro": "Last synced item was a retrospective ({rx_id}) — skipping auto retrospective.",
   "respond.retro.skipped_no_script": "retro_script not configured — skipping auto retrospective.",
   "retro.no_agreed_items": "(no agreed items)",
-  "retro.marker_set": "[retro] Retrospective marker set ({rx_id}) — perform protocol in next session.",
+  "retro.marker_set": "[retro] Retrospective marker set ({rx_id}) — retrospective will start automatically on next tool use.",
   "retro.no_claude_md": "[retro] claude.md not found. Skipping retrospective.",
 
   "pdoc.none_item": "- none",

@@ -81,19 +81,21 @@ Correction procedure:
 2. Fix the code
 3. Update the same evidence package and resubmit (keep `[trigger_tag]`)
 
-## Retrospective Protocol
+## Retrospective Protocol (Auto-Start)
 
-When all items reach `[agree_tag]`, the session-gate activates:
+When all items reach `[agree_tag]`, the session-gate activates and you must **start the retrospective immediately without waiting for user instruction**:
 
 1. Bash/Agent are blocked (only Read/Write/Edit allowed)
-2. Perform retrospective with the user:
+2. **Immediately** present the retrospective to the user:
    - What went well this cycle
-   - What went wrong
+   - What went wrong (honest improvements)
    - What to improve
-3. Clean up memory
-4. Record handoff
-5. Run `echo session-self-improvement-complete` → gate clears
-6. Commit allowed
+3. Exchange feedback with the user
+4. Extract repeatable principles from feedback → save to memory
+5. Clean up memory — remove duplicate/stale entries
+6. Record handoff
+7. Run `echo session-self-improvement-complete` → gate clears
+8. Commit allowed
 
 ## Policy File References
 

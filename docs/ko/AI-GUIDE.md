@@ -81,19 +81,21 @@ npx vitest run tests/specific-file.test.ts
 2. 코드를 수정
 3. 동일한 증거 패키지를 갱신하여 다시 제출 (`[trigger_tag]` 유지)
 
-## 회고 프로토콜
+## 회고 프로토콜 (자동 시작)
 
-모든 항목이 `[agree_tag]`로 닫히면 session-gate가 활성화됩니다:
+모든 항목이 `[agree_tag]`로 닫히면 session-gate가 활성화되고 **사용자의 지시 없이 즉시 회고를 시작**해야 합니다:
 
 1. Bash/Agent가 차단됩니다 (Read/Write/Edit만 가능)
-2. 사용자와 함께 회고를 수행합니다:
+2. **즉시** 사용자에게 회고를 제시합니다:
    - 이번 사이클에서 잘된 것
-   - 문제였던 것
+   - 문제였던 것 (솔직한 개선점)
    - 개선할 것
-3. 메모리를 정리합니다
-4. 핸드오프를 기록합니다
-5. `echo session-self-improvement-complete` 실행 → 게이트 해제
-6. 커밋 가능
+3. 사용자와 피드백을 교환합니다
+4. 피드백에서 반복 가능한 원칙을 메모리에 기록합니다
+5. 메모리를 정리합니다 — 중복/stale 항목 제거
+6. 핸드오프를 기록합니다
+7. `echo session-self-improvement-complete` 실행 → 게이트 해제
+8. 커밋 가능
 
 ## 정책 파일 참조
 

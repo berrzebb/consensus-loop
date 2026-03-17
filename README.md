@@ -10,7 +10,7 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 
 1. **Independent critic** — The AI that writes (Claude) and the AI that reviews (GPT/Codex) are different models.
 2. **No progress without consensus** — `[trigger_tag]` items are incomplete until promoted to `[agree_tag]`.
-3. **HITL retrospective** — After consensus, the session gate forces a human-in-the-loop retrospective before commit.
+3. **Auto retrospective** — After consensus, the session gate blocks commits and the AI agent automatically starts the retrospective (no user instruction needed).
 4. **Policy as data** — Audit criteria, rejection codes, and output formats are defined in editable reference files, not code.
 
 ---
@@ -24,7 +24,7 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Streaming output** | Codex NDJSON events are parsed line-by-line in real-time → `audit-bg.log` |
 | **Auto-sync** | `gpt.md` newer than `watch_file` → `respond.mjs` promotes/demotes tags |
 | **Quality gates** | Every file edit → matching `quality_rules` run inline (ESLint, npm audit, …) |
-| **Session gate (HITL)** | PreToolUse hook blocks Bash/commit until retrospective is complete |
+| **Session gate (auto-retro)** | PreToolUse hook blocks Bash/commit → AI auto-starts retrospective |
 | **Facade prompts** | Lean prompts (~30 lines) reference `{{REFERENCES_DIR}}/` for detailed rules |
 | **Shared context** | `context.mjs` — single source for config, paths, parsers, i18n (no duplication) |
 | **Audit timestamp** | System-appended `> 감사 완료: YYYY-MM-DD HH:MM` on gpt.md (zero agent tokens) |
