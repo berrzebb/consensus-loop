@@ -1,6 +1,6 @@
 ---
 name: consensus-audit
-description: Run a consensus-loop audit manually — Codex reviews pending [REVIEW_NEEDED] items in the watch file
+description: Run a consensus-loop audit manually — Codex reviews pending trigger_tag items in the watch file
 arguments:
   - name: options
     description: "Optional flags: --dry-run, --no-resume, --auto-fix, --model <name>"
@@ -18,9 +18,11 @@ node ${CLAUDE_PLUGIN_ROOT}/audit.mjs {{ options }}
 ```
 
 2. After the audit completes, read the respond file (gpt.md) and summarize the results to the user:
-   - Show the verdict for each item ([APPROVED] or [CHANGES_REQUESTED])
+   - Show the verdict for each item (agree_tag or pending_tag from config.json)
    - List any rejection codes with their specific reasons
    - Show the recommended next steps
+
+> Note: Tag names are configurable in `${CLAUDE_PLUGIN_ROOT}/config.json`.
 
 ## Common Options
 

@@ -1,21 +1,21 @@
 ---
 name: consensus-loop
-description: Guide for writing proper evidence packages for consensus-loop code review. Use when writing or editing the feedback watch file (claude.md), submitting code for audit review, or when [CHANGES_REQUESTED] items need to be addressed.
+description: Guide for writing proper evidence packages for consensus-loop code review. Use when writing or editing the feedback watch file, submitting code for audit review, or when pending_tag items need to be addressed.
 version: 1.0.0
 ---
 
 # Consensus Loop — Evidence Package Guide
 
-When submitting code changes for consensus review, write a properly structured evidence package in the watch file (`feedback/claude.md`).
+When submitting code changes for consensus review, write a properly structured evidence package in the watch file (path configured in `config.json` → `consensus.watch_file`).
+
+> **Important:** Tag names below (`trigger_tag`, `agree_tag`, `pending_tag`) are placeholders. Check your project's `.claude/hooks/consensus-loop/config.json` for actual values.
 
 ## Required Structure
 
-Every `[REVIEW_NEEDED]` item must include these sections:
+Every `trigger_tag` item must include these sections:
 
 ```markdown
-## Audit Scope
-
-- <description of change> [REVIEW_NEEDED]
+## [trigger_tag] Task Title
 
 ### Claim
 What was changed and why — be specific about the function/module modified.
@@ -40,20 +40,21 @@ What was changed and why — be specific about the function/module modified.
 2. **Test Result** must be actual terminal output, not summaries like "all tests passed"
 3. **Claim** must match the actual code changes — don't claim `extractText` was modified if the change is in `convertTableToMarkdown`
 4. **Changed Files** paths must use backtick formatting: `` `path/to/file.ts` ``
+5. **Every changed file must pass eslint individually** — the auditor runs `npx eslint <file>` per file
 
 ## Tag Lifecycle
 
 ```
-[REVIEW_NEEDED] → Codex audits → [APPROVED] or [CHANGES_REQUESTED]
+[trigger_tag] → Codex audits → [agree_tag] or [pending_tag]
                                     ↓
-                            Fix issues, re-submit with [REVIEW_NEEDED]
+                            Fix issues, re-submit with [trigger_tag]
 ```
 
-## Addressing [CHANGES_REQUESTED]
+## Addressing `pending_tag` Rejections
 
-When Codex returns `[CHANGES_REQUESTED]`:
+When Codex returns `pending_tag`:
 
-1. Read the rejection codes in `gpt.md` (e.g., `needs-evidence`, `test-gap`, `scope-mismatch`)
-2. Fix each cited issue
+1. Read the rejection codes in the respond file (e.g., `test-gap`, `claim-drift`, `scope-mismatch`)
+2. Fix each cited issue at the specific file:line locations
 3. Update the evidence package with corrected claims, tests, and results
-4. Change the tag back to `[REVIEW_NEEDED]` to trigger a new audit cycle
+4. Keep the `trigger_tag` to trigger a new audit cycle
