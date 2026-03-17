@@ -1,0 +1,21 @@
+{
+  "name": "consensus-loop",
+  "version": "1.0.0",
+  "description": "Two-party AI code review automation — Claude implements, Codex audits, humans approve",
+  "author": {
+    "name": "berrzebb",
+    "url": "https://github.com/berrzebb"
+  },
+  "repository": "https://github.com/berrzebb/consensus-loop",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "consensus",
+    "audit",
+    "claude-code",
+    "codex",
+    "hooks",
+    "ai-agents"
+  ],
+  "hooks": "./hooks/hooks.json"
+}

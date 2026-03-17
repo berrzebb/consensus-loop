@@ -9,10 +9,38 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 
 // ── Paths ─────────────────────────────────────────────────
 export const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
-export const REPO_ROOT = resolve(HOOKS_DIR, "..", "..", "..");
+
+/**
+ * Resolve the repository root directory.
+ *
+ * Legacy layout:  .claude/hooks/consensus-loop/  → 3 levels up
+ * Plugin layout:  installed anywhere              → git rev-parse
+ *
+ * Falls back to process.cwd() when git is unavailable.
+ */
+function resolveRepoRoot() {
+  // 1. Legacy layout: .claude/hooks/consensus-loop/
+  const legacyRoot = resolve(HOOKS_DIR, "..", "..", "..");
+  if (existsSync(resolve(legacyRoot, ".git"))) return legacyRoot;
+
+  // 2. Plugin layout: use git to find repo root
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch { /* git not available or not in a repo */ }
+
+  // 3. Fallback
+  return process.cwd();
+}
+
+export const REPO_ROOT = resolveRepoRoot();
 
 // ── Config ────────────────────────────────────────────────
 export const cfg = JSON.parse(readFileSync(resolve(HOOKS_DIR, "config.json"), "utf8"));
