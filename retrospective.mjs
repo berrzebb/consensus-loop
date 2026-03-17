@@ -55,7 +55,9 @@ function main() {
 
   // Write marker file — session-gate.mjs picks it up on next PreToolUse
   // session_id is propagated via env: index.mjs → respond.mjs → retrospective.mjs
+  // In subagent mode, retro is deferred to the orchestrator session (main session)
   const sessionId = process.env.RETRO_SESSION_ID || null;
+  const isSubagent = process.env.PARENT_TOOL_USE_ID != null;
   if (!existsSync(MARKER_DIR)) mkdirSync(MARKER_DIR, { recursive: true });
   writeFileSync(MARKER_PATH, JSON.stringify({
     retro_pending: true,
@@ -63,6 +65,7 @@ function main() {
     rx_id: rxId,
     agreed_items: agreedItems,
     instructions_shown: false,
+    deferred_to_orchestrator: isSubagent,
     created_at: new Date().toISOString(),
   }, null, 2), "utf8");
 

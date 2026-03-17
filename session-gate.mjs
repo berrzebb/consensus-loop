@@ -61,6 +61,13 @@ if (marker.session_id && current_session && marker.session_id !== current_sessio
   process.exit(0);
 }
 
+// Subagent pass-through: forked contexts (implementer, planner, etc.) are allowed
+// They are doing implementation work, not committing — gate only blocks the main session
+const is_subagent = input.parent_tool_use_id != null;
+if (is_subagent) {
+  process.exit(0);
+}
+
 const tool_name = input.tool_name || "";
 
 // Completion command → release marker
