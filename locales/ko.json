@@ -59,7 +59,7 @@
   "respond.run_with_auto_fix": "\n--auto-fix 옵션으로 실행하면 claude -p로 보정이 자동 실행됩니다.",
   "respond.no_gpt_response": "GPT가 아직 계류 항목에 응답하지 않았습니다.",
 
-  "respond.retro.all_clear": "\n모든 감사 항목이 합의완료 — 자동 회고를 트리거합니다 ({rx_id}).\n",
+  "respond.retro.all_clear": "\n[ACTION REQUIRED] 모든 감사 항목이 합의완료되었습니다 ({rx_id}).\n사용자의 지시를 기다리지 말고 즉시 회고를 시작하세요:\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n5. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록\n6. 완료 후: echo session-self-improvement-complete\n",
   "respond.retro.skipped_is_retro": "직전 합의 항목이 회고({rx_id})이므로 자동 회고를 건너뜁니다.",
   "respond.retro.skipped_no_script": "retro_script가 설정되지 않아 자동 회고를 건너뜁니다.",
   "retro.no_agreed_items": "(합의 완료 항목 없음)",
@@ -80,7 +80,7 @@
   "index.audit.already_running": "\n[consensus-loop] 감사가 이미 실행 중입니다 (PID {pid}). 중복 실행을 건너뜁니다.\n",
   "index.timestamp.label": "감사 완료",
 
-  "gate.protocol": "\n[SESSION SELF-IMPROVEMENT PROTOCOL]\n감사 사이클이 완료되었습니다. 커밋 전 회고 프로토콜을 수행하세요.\n\n## 합의 완료 항목\n{context}\n\n## 수행 절차\n1. 회고 — 이번 사이클에서 잘된 것 / 문제인 것\n2. 피드백 — 사용자와 양방향 교환\n3. 메모리 정리 — 중복/stale 항목 제거\n4. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록 (진행중/대기/완료)\n5. 저장소 동기화 — node .claude/scripts/sync-handoff.mjs → git add/commit\n6. 완료 후: echo session-self-improvement-complete\n\n[Bash/Agent 차단 중 — 프로토콜 완료 시 해제]\n",
+  "gate.protocol": "\n[ACTION REQUIRED — SESSION SELF-IMPROVEMENT]\n감사 사이클이 완료되었습니다. 사용자의 지시를 기다리지 말고 즉시 회고를 시작하세요.\n\n## 합의 완료 항목\n{context}\n\n## 즉시 수행 (자동)\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시하세요\n2. 사용자와 피드백을 교환하세요 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙을 추출하여 메모리에 기록하세요\n4. 메모리를 정리하세요 — 중복/stale 항목 제거\n5. 핸드오프를 기록하세요 — memory/session_handoff.md\n6. 저장소 동기화: node .claude/scripts/sync-handoff.mjs → git add/commit\n7. 완료 후: echo session-self-improvement-complete\n\n[Bash/Agent 차단 중 — 위 절차 완료 시 해제]\n",
   "gate.blocked": "[SESSION GATE] 회고 프로토콜 미완료 — {tool} 차단됨.\nRead/Write/Edit로 메모리 정리 후 'echo session-self-improvement-complete'를 실행하세요.\n",
 
   "pdoc.title": "# 피드백 승격 인덱스",
