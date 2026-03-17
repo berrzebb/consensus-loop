@@ -1,8 +1,8 @@
-# consensus-loop
+# consensus-loop v2.0.0
 
-> **Claude Code hook plugin** — tag-based two-party consensus protocol between Claude (implementer) and an external AI auditor (GPT/Codex), with HITL retrospective gates.
+> **Claude Code hook plugin** — tag-based two-party consensus protocol between Claude (implementer) and an external AI auditor (GPT/Codex), with HITL retrospective gates and multi-agent orchestration.
 
-Drop in one directory, edit one `config.json`, and every file edit is automatically routed through an **edit → audit → agree → retro → commit** cycle.
+Drop in one directory, edit one `config.json`, and every file edit is automatically routed through an **edit → audit → agree → retro → commit** cycle. Supports multi-agent orchestration with headless workers running in isolated git worktrees.
 
 ---
 
@@ -27,12 +27,15 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Session gate (auto-retro)** | PreToolUse hook blocks Bash/commit → AI auto-starts retrospective |
 | **Facade prompts** | Lean prompts (~30 lines) reference `{{REFERENCES_DIR}}/` for detailed rules |
 | **Shared context** | `context.mjs` — single source for config, paths, parsers, i18n (no duplication) |
+| **Locale allowlist** | `plugin.locale` validated against `{"en","ko"}` allowlist — invalid values fall back to `"en"` (path traversal prevention) |
 | **Audit timestamp** | System-appended `> 감사 완료: YYYY-MM-DD HH:MM` on gpt.md (zero agent tokens) |
 | **Debounce** | Rapid consecutive edits are debounced (10 s) — only the last edit triggers an audit |
 | **Audit lock** | `audit.lock` in `REPO_ROOT/.claude/` prevents concurrent audits (TTL + PID liveness) |
 | **Session lifecycle** | `SessionStart` / `Stop` hooks manage session ID and cleanup |
 | **Subagent tracking** | `SubagentStop` hook captures implementer agent results |
+| **Handoff sync** | `handoff-writer.mjs` — bidirectional sync between repo handoff doc and Claude memory |
 | **Plugin skills** | 6 slash-command skills: orchestrator, implementer, verify, merge-worktree, planner, consensus-loop |
+| **CLI commands** | 2 slash commands: `/consensus-audit` (manual audit), `/consensus-status` (current state) |
 | **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
 
 ---
@@ -43,7 +46,8 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 consensus-loop/
 │
 ├── .claude-plugin/
-│   └── plugin.json        ← Plugin metadata (name, version, author)
+│   ├── plugin.json        ← Plugin metadata (name, version, author)
+│   └── marketplace.json   ← Marketplace listing for plugin discovery
 │
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered by plugin system)
@@ -56,15 +60,26 @@ consensus-loop/
 │   ├── planner/           ← /planner — planning + work breakdown
 │   └── consensus-loop/    ← /consensus-loop — main entry point
 │
-├── agents/                ← Agent definition files
+├── agents/
 │   └── implementer.md     ← Implementer agent persona
 │
 ├── commands/              ← CLI commands (auto-discovered)
+│   ├── consensus-audit.md ← /consensus-audit — trigger manual audit
+│   └── consensus-status.md← /consensus-status — show current loop state
 │
-├── context.mjs            ← Shared module: config, paths, parsers, i18n cache
+├── docs/                  ← User-facing documentation
+│   ├── en/
+│   │   ├── AI-GUIDE.md    ← AI agent usage guide (English)
+│   │   ├── README.md      ← Plugin reference (English)
+│   │   └── ROADMAP.md     ← Roadmap
+│   └── ko/
+│       ├── AI-GUIDE.md    ← AI agent usage guide (Korean)
+│       └── README.md      ← Plugin reference (Korean)
+│
+├── context.mjs            ← Shared module: config, paths, parsers, i18n cache, safeLocale
 ├── index.mjs              ← PostToolUse hook entry point
 ├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag detected
-├── respond.mjs            ← Syncs gpt.md → claude.md; promotes/demotes tags
+├── respond.mjs            ← Syncs gpt.md ↔ claude.md; promotes/demotes tags
 ├── retrospective.mjs      ← Sets retro marker after all items agreed
 ├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
 ├── session-start.mjs      ← SessionStart hook: handoff sync + context injection
@@ -83,20 +98,21 @@ consensus-loop/
 │   ├── fix-prompt.md      ← Facade → references fix-rules, evidence-format
 │   ├── retro-prompt.md    ← Facade → references retro-questions, memory-cleanup
 │   └── references/
-│       ├── ko/            ← Korean policy files (team-editable)
+│       ├── ko/            ← Korean policy files (team-editable, 9 files)
 │       │   ├── rejection-codes.md
 │       │   ├── test-checklist.md
 │       │   ├── output-format.md
 │       │   ├── evidence-format.md
+│       │   ├── done-criteria.md
 │       │   ├── memory-cleanup.md
 │       │   ├── principles.md
 │       │   ├── retro-questions.md
 │       │   └── fix-rules.md
-│       └── en/            ← English equivalents
+│       └── en/            ← English equivalents (same 9 files)
 │
 ├── tests/
-├── plans/                 ← Example planning docs (ko/en)
-├── examples/              ← Example config and templates
+├── plans/                 ← Work planning docs (ko/en)
+├── examples/              ← Example config, plans, and templates
 │
 └── (auto-generated — gitignored, written to REPO_ROOT/.claude/)
     ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
@@ -277,7 +293,7 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
 ```jsonc
 {
   "plugin": {
-    "locale":          "en",                         // "en" or "ko"
+    "locale":          "en",                         // Allowlist: "en" | "ko" only — other values silently fall back to "en"
     "audit_script":    "audit.mjs",
     "audit_prompt":    "templates/audit-prompt.md",
     "respond_script":  "respond.mjs",
@@ -381,4 +397,4 @@ Example for English:
 | Contributor | Contributions |
 |---|---|
 | [@berrzebb](https://github.com/berrzebb) | Core architecture, async audit, streaming, i18n, HITL gate |
-| [@dandacompany](https://github.com/dandacompany) | Security fixes (#1), Claude Code plugin support (#2) |
+| [@dandacompany](https://github.com/dandacompany) | Security fixes (#1 shell injection, #2 plugin support), v5 locale path traversal + ESM require fix |
