@@ -181,9 +181,9 @@ export function syncHandoffFromMemory(repoRoot, handoffRelPath) {
 // Allows standalone execution: node handoff-writer.mjs [repo-root] [handoff-path]
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { REPO_ROOT, cfg, plugin } = await import("./context.mjs");
+  const { REPO_ROOT, cfg, safeLocale } = await import("./context.mjs");
   const handoffFile = cfg.plugin?.handoff_file ?? ".claude/session-handoff.md";
-  const locale = plugin.locale ?? "en";
+  const locale = safeLocale;
   const result = syncHandoffToMemory(REPO_ROOT, handoffFile, { locale });
 
   if (result.success) {

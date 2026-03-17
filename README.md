@@ -302,6 +302,8 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
 }
 ```
 
+> **Security note**: `quality_rules[].command` values are executed via the system shell (`shell: true`). Never use a `config.json` from an untrusted source — a malicious command field can execute arbitrary code on your machine.
+
 ---
 
 ## Template Variables

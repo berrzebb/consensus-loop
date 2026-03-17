@@ -6,7 +6,7 @@ import { dirname, resolve, relative } from "node:path";
 import { spawnSync } from "node:child_process";
 import { resolveBinary, spawnResolvedAsync } from "./cli-runner.mjs";
 import {
-  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus,
+  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus, safeLocale,
   SEC, t, escapeRe,
   triggerInner, agreeInner, pendingInner, STATUS_TAG_RE,
   findWatchFile, extractStatusFromLine, readSection,
@@ -302,9 +302,9 @@ function buildPrompt(scopeText, promotionHint) {
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
     .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
     .split("{{DESIGN_DOCS_DIR}}").join(cfg.consensus.design_docs_dir ?? "docs/ko/design/**")
-    .split("{{LOCALE}}").join(plugin.locale ?? "en")
+    .split("{{LOCALE}}").join(safeLocale)
     .split("{{REFERENCES_DIR}}").join(
-      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", plugin.locale ?? "en")).replace(/\\/g, "/"),
+      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", safeLocale)).replace(/\\/g, "/"),
     );
 }
 

@@ -13,7 +13,7 @@ import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
 import {
-  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus,
+  HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus, safeLocale,
   SEC, DOC_PATTERNS as D, t, createT,
   triggerInner, agreeInner, pendingInner,
   STATUS_TAG_RE, STATUS_TAG_RE_GLOBAL,
@@ -677,10 +677,10 @@ function buildFixPrompt(corrections, gptMd) {
     .split("{{TRIGGER_TAG}}").join(cfg.consensus.trigger_tag)
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
     .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
-    .split("{{LOCALE}}").join(plugin.locale ?? "en")
+    .split("{{LOCALE}}").join(safeLocale)
     .split("{{DESIGN_DOCS_DIR}}").join(consensus.design_docs_dir ?? "docs/ko/design/**")
     .split("{{REFERENCES_DIR}}").join(
-      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", plugin.locale ?? "en")).replace(/\\/g, "/"),
+      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", safeLocale)).replace(/\\/g, "/"),
     );
 }
 

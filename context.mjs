@@ -47,6 +47,11 @@ export const cfg = JSON.parse(readFileSync(resolve(HOOKS_DIR, "config.json"), "u
 export const plugin = cfg.plugin;
 export const consensus = cfg.consensus;
 
+// ── Locale 검증 (path traversal 방지) ─────────────────────
+const ALLOWED_LOCALES = new Set(["en", "ko"]);
+const rawLocale = plugin.locale ?? "en";
+export const safeLocale = ALLOWED_LOCALES.has(rawLocale) ? rawLocale : "en";
+
 // ── Section name constants (English defaults; config overrides) ──
 const S = consensus.sections ?? {};
 export const SEC = {
@@ -139,7 +144,7 @@ export function createT(locale) {
   return t;
 }
 
-export const t = createT(plugin.locale ?? "en");
+export const t = createT(safeLocale);
 
 // ── Markdown parser ───────────────────────────────────────
 
