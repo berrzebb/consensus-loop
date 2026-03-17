@@ -33,16 +33,18 @@ const find_respond_file = findRespondFile;
 /** Pre-validate evidence package format — regex-based, zero tokens. */
 function validate_evidence_format(content) {
   const errors = [];
+  const warnings = [];
   const triggerSection = content.split(/^## /m).find((s) => s.includes(c.trigger_tag));
-  if (!triggerSection) return errors; // trigger 섹션 자체가 없으면 검증 대상 아님
+  if (!triggerSection) return { errors, warnings };
 
-  const required = [
-    { label: "Claim", pattern: /### Claim/i },
-    { label: "Changed Files", pattern: /### Changed Files/i },
-    { label: "Test Command", pattern: /### Test Command/i },
-    { label: "Test Result", pattern: /### Test Result/i },
-    { label: "Residual Risk", pattern: /### Residual Risk/i },
-  ];
+  // ── Required sections — configurable via consensus.evidence_sections, fallback to defaults ──
+  const configSections = c.evidence_sections ?? [];
+  const defaultSections = ["Claim", "Changed Files", "Test Command", "Test Result", "Residual Risk"];
+  const sectionNames = configSections.length > 0 ? configSections : defaultSections;
+  const required = sectionNames.map((label) => ({
+    label,
+    pattern: new RegExp(`### ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"),
+  }));
 
   for (const { label, pattern } of required) {
     if (!pattern.test(triggerSection)) {
@@ -50,7 +52,7 @@ function validate_evidence_format(content) {
     }
   }
 
-  // Check for glob usage in Test Command
+  // ── Test Command glob 금지 ──
   if (/### Test Command/.test(triggerSection)) {
     const cmdSection = triggerSection.split(/### Test Command/i)[1]?.split(/### /)[0] || "";
     if (/\*\*?\/|\*\.\w+/.test(cmdSection)) {
@@ -58,7 +60,7 @@ function validate_evidence_format(content) {
     }
   }
 
-  // Check if Test Result is empty
+  // ── Test Result 비어있는지 ──
   if (/### Test Result/.test(triggerSection)) {
     const resultSection = triggerSection.split(/### Test Result/i)[1]?.split(/### /)[0] || "";
     if (resultSection.trim().length < 10) {
@@ -66,7 +68,52 @@ function validate_evidence_format(content) {
     }
   }
 
-  return errors;
+  // ── 간이 감사: Changed Files 실제 존재 확인 ──
+  if (/### Changed Files/.test(triggerSection)) {
+    const filesSection = triggerSection.split(/### Changed Files/i)[1]?.split(/### /)[0] || "";
+    const listedFiles = [...filesSection.matchAll(/`([^`]+\.[a-zA-Z]+)`/g)].map((m) => m[1]);
+    for (const f of listedFiles) {
+      const fullPath = resolve(REPO_ROOT, f);
+      if (!existsSync(fullPath)) {
+        warnings.push(t("index.quick_audit.file_not_found", { file: f }));
+      }
+    }
+    if (listedFiles.length === 0 && filesSection.trim().length > 0) {
+      warnings.push(t("index.quick_audit.no_backtick_paths"));
+    }
+  }
+
+  // ── 간이 감사: git diff와 Changed Files 비교 ──
+  if (/### Changed Files/.test(triggerSection)) {
+    try {
+      const { execSync } = require("child_process");
+      const diffFiles = execSync("git diff --cached --name-only", { cwd: REPO_ROOT, encoding: "utf8" })
+        .trim().split("\n").filter(Boolean);
+      if (diffFiles.length === 0) {
+        // staged 없으면 unstaged 확인
+        const unstaged = execSync("git diff --name-only", { cwd: REPO_ROOT, encoding: "utf8" })
+          .trim().split("\n").filter(Boolean);
+        if (unstaged.length > 0) {
+          const filesSection = triggerSection.split(/### Changed Files/i)[1]?.split(/### /)[0] || "";
+          const listedFiles = [...filesSection.matchAll(/`([^`]+\.[a-zA-Z]+)`/g)].map((m) => m[1]);
+          const missing = listedFiles.filter((f) => !unstaged.some((d) => d.endsWith(f) || f.endsWith(d)));
+          for (const f of missing) {
+            warnings.push(t("index.quick_audit.not_in_diff", { file: f }));
+          }
+        }
+      }
+    } catch { /* git 사용 불가 시 무시 */ }
+  }
+
+  // ── Quick audit: tag conflict (agree + trigger on same line) ──
+  const lines = triggerSection.split(/\r?\n/);
+  for (const line of lines) {
+    if (line.includes(c.trigger_tag) && line.includes(cfg.consensus.agree_tag)) {
+      warnings.push(t("index.quick_audit.tag_conflict", { trigger: c.trigger_tag, agree: cfg.consensus.agree_tag }));
+    }
+  }
+
+  return { errors, warnings };
 }
 
 function get_mtime(p) { try { return statSync(p).mtimeMs; } catch { return 0; } }
@@ -256,7 +303,7 @@ async function main() {
     run_quality_checks(filePath);
   }
 
-  // (A) Detect watch_file edit
+  // (A) Detect watch_file edit — with debounce for sequential edits
   if (normalized.endsWith(c.watch_file.toLowerCase())) {
     const watchPath = find_watch_file();
     if (!watchPath) { log("EXIT: watch_file not found"); return; }
@@ -264,13 +311,45 @@ async function main() {
     const content = readFileSync(watchPath, "utf8");
     if (!has_trigger(content)) { log("EXIT: no trigger_tag"); return; }
 
-    // Pre-validate format — zero tokens, blocks before Codex invocation
-    const formatErrors = validate_evidence_format(content);
+    // 디바운스: 연속 Edit 시 마지막 Edit만 감사 트리거
+    const DEBOUNCE_MS = 10_000;
+    const debouncePath = resolve(HOOKS_DIR, "audit-debounce.ts");
+    const now = Date.now();
+    writeFileSync(debouncePath, String(now), "utf8");
+    log(`DEBOUNCE: scheduled at ${now}, waiting ${DEBOUNCE_MS}ms`);
+
+    await new Promise((r) => setTimeout(r, DEBOUNCE_MS));
+
+    // 디바운스 확인: 내가 쓴 timestamp가 아직 유효한가?
+    try {
+      const current = readFileSync(debouncePath, "utf8").trim();
+      if (current !== String(now)) {
+        log(`DEBOUNCE: superseded by ${current}, skipping`);
+        return;
+      }
+    } catch {
+      log("DEBOUNCE: file removed, skipping");
+      return;
+    }
+
+    // 디바운스 통과 — 마지막 Edit 확인. 최신 content 다시 읽기.
+    const freshContent = readFileSync(watchPath, "utf8");
+    if (!has_trigger(freshContent)) { log("EXIT: trigger_tag removed during debounce"); return; }
+
+    // Pre-validate format + 간이 감사 — zero tokens, blocks before Codex invocation
+    const { errors: formatErrors, warnings: quickAuditWarnings } = validate_evidence_format(freshContent);
     if (formatErrors.length > 0) {
       const errorList = formatErrors.map((e) => `  • ${e}`).join("\n");
       process.stdout.write(t("index.format.check_header", { errors: errorList }));
       log(`FORMAT_INCOMPLETE: ${formatErrors.length} errors`);
       return;
+    }
+
+    // 간이 감사 결과 출력 (warning은 감사를 차단하지 않음 — 참고용)
+    if (quickAuditWarnings.length > 0) {
+      const warnList = quickAuditWarnings.map((w) => `  ⚠ ${w}`).join("\n");
+      process.stdout.write(t("index.quick_audit.header", { count: quickAuditWarnings.length, warnings: warnList }));
+      log(`QUICK_AUDIT: ${quickAuditWarnings.length} warnings`);
     }
 
     run_audit();
