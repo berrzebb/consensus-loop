@@ -1,11 +1,16 @@
-# 프로젝트 특화 실사용 파일 — examples/ 에서 복사 후 수정하여 사용
+# Project-specific runtime files — copy from examples/ and customize
 config.json
 templates/*.md
 feedback/
 /plans/
 
-
-# 자동 생성 상태 파일
+# Auto-generated state files
 ack.timestamp
 session.id
 debug.log
+audit.lock
+audit-bg.log
+audit-debounce.ts
+codex-session.log
+hook-debug.log
+.session-state/
