@@ -9,10 +9,10 @@
  *
  * All behavior is controlled by config.json.
  */
-import { readFileSync, existsSync, appendFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync, statSync, writeFileSync, openSync, closeSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import {
   HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus as c,
   findWatchFile, findRespondFile, t,
@@ -92,50 +92,59 @@ function run_script(absPath, args = []) {
   return { status: result.status, stdout: out };
 }
 
-function read_session_id() {
-  const sessionPath = resolve(HOOKS_DIR, plugin.session_file);
-  try {
-    const stored = JSON.parse(readFileSync(sessionPath, "utf8"));
-    return stored.id || null;
-  } catch { return null; }
-}
-
-/** (A) Detected trigger_tag → run audit_script → emit result. */
+/** (A) Detected trigger_tag → spawn audit_script in background, return immediately. */
 function run_audit() {
   if (process.env.FEEDBACK_HOOK_DRY_RUN === "1") {
     process.stdout.write(t("index.dry_run.audit", { script: plugin.audit_script }));
     return;
   }
-  const sessionId = read_session_id();
-  const mode = sessionId
-    ? t("index.session.resume", { id: sessionId.slice(0, 8) })
-    : t("index.session.new");
-  process.stdout.write(t("index.trigger.detected", { tag: c.trigger_tag, mode }));
 
-  const watchPath   = find_watch_file();
-  const respondPath = find_respond_file();
-  const mtimeBefore = respondPath ? get_mtime(respondPath) : 0;
-
-  const result = run_script(resolve(HOOKS_DIR, plugin.audit_script));
-  if (!result) { process.stdout.write(t("index.audit.failed")); return; }
-  if (result.status !== 0) { process.stdout.write(t("index.audit.exit_abnormal", { code: result.status })); return; }
-  if (result.stdout) process.stdout.write(t("index.audit.output", { out: result.stdout }));
-
-  const respondPathNow = find_respond_file();
-  if (respondPathNow && existsSync(respondPathNow)) {
-    const mtimeAfter     = get_mtime(respondPathNow);
-    let content_respond = readFileSync(respondPathNow, "utf8");
-    const content_watch  = watchPath ? readFileSync(watchPath, "utf8") : "";
-
-    write_ack(Date.now());
-
-    if (has_agreed(content_watch)) {
-      const key = mtimeAfter > mtimeBefore ? "index.audit.done_agreed_updated" : "index.audit.done_agreed";
-      process.stdout.write(t(key, { tag: c.agree_tag, content: content_respond }));
-    } else {
-      process.stdout.write(t("index.audit.done_pending", { tag: c.pending_tag, content: content_respond }));
+  // 중복 실행 방지: 락 파일로 기존 감사 프로세스 확인
+  const lockPath = resolve(HOOKS_DIR, "audit.lock");
+  const LOCK_TTL_MS = 30 * 60 * 1000; // 30분 — PID 재활용 대비 최대 유효 시간
+  if (existsSync(lockPath)) {
+    try {
+      const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+      const age = Date.now() - (lock.startedAt ?? 0);
+      if (lock.pid && age < LOCK_TTL_MS) {
+        try {
+          process.kill(lock.pid, 0);
+          process.stdout.write(t("index.audit.already_running", { pid: lock.pid }));
+          return;
+        } catch {
+          log("STALE_LOCK: pid " + lock.pid + " no longer running — removing");
+        }
+      } else if (age >= LOCK_TTL_MS) {
+        log("EXPIRED_LOCK: age " + Math.round(age / 60000) + "min — removing");
+      }
+    } catch {
+      log("INVALID_LOCK: removing corrupt audit.lock");
     }
   }
+
+  const auditScript = resolve(HOOKS_DIR, plugin.audit_script);
+  if (!existsSync(auditScript)) {
+    log("SKIP: " + auditScript + " not found");
+    process.stdout.write(t("index.audit.failed"));
+    return;
+  }
+
+  // 백그라운드 프로세스로 감사 실행 — 훅 즉시 반환
+  const logPath = resolve(HOOKS_DIR, "audit-bg.log");
+  const logFd = openSync(logPath, "w");
+
+  const child = spawn(process.execPath, [auditScript], {
+    cwd: REPO_ROOT,
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: { ...process.env, FEEDBACK_LOOP_ACTIVE: "1" },
+  });
+
+  writeFileSync(lockPath, JSON.stringify({ pid: child.pid, startedAt: Date.now() }), "utf8");
+  child.unref();
+  closeSync(logFd);
+
+  process.stdout.write(t("index.audit.started_async", { tag: c.trigger_tag, pid: child.pid, log: logPath }));
 }
 
 /** (B) If the respond file is newer → auto-sync via respond_script. */

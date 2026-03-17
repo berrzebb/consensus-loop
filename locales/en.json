@@ -76,6 +76,8 @@
   "index.format.glob_in_test": "[FORMAT_GLOB_IN_TEST] Test Command contains glob patterns. Use an explicit file list.",
   "index.format.empty_result": "[FORMAT_EMPTY_RESULT] Test Result is empty or too short. Copy-paste the terminal output.",
   "index.format.check_header": "\n[FORMAT-CHECK] Evidence package format error — skipping audit.\nFix the following items and resubmit:\n\n{errors}\n\nError code: FORMAT_INCOMPLETE\n",
+  "index.audit.started_async": "\n[consensus-loop] {tag} detected → background audit started (PID {pid}).\nLog: {log}\n\n[ACTION REQUIRED] The audit is running in the background.\n1. Continue processing user requests.\n2. Register a 3-minute Cron watcher via CronCreate — check audit.lock existence and gpt.md changes, run respond.mjs when ready.\n3. Results will auto-sync on next tool use after audit completes.\n",
+  "index.audit.already_running": "\n[consensus-loop] Audit already running (PID {pid}). Skipping duplicate execution.\n",
   "index.timestamp.label": "Audit completed",
 
   "gate.protocol": "\n[SESSION SELF-IMPROVEMENT PROTOCOL]\nAudit cycle completed. Perform the retrospective protocol before committing.\n\n## Agreed Items\n{context}\n\n## Procedure\n1. Retrospective — what went well / what went wrong\n2. Feedback — two-way exchange with user\n3. Memory cleanup — remove duplicate/stale entries\n4. Handoff — record current work status in memory/session_handoff.md (in-progress/waiting/completed)\n5. Repo sync — node .claude/scripts/sync-handoff.mjs → git add/commit\n6. When done: echo session-self-improvement-complete\n\n[Bash/Agent blocked — unblocked upon protocol completion]\n",

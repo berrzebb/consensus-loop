@@ -2,9 +2,9 @@
 /* global process, console */
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, relative } from "node:path";
 import { spawnSync } from "node:child_process";
-import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
+import { resolveBinary, spawnResolvedAsync } from "./cli-runner.mjs";
 import {
   HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus,
   SEC, t, escapeRe,
@@ -302,7 +302,10 @@ function buildPrompt(scopeText, promotionHint) {
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
     .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
     .split("{{DESIGN_DOCS_DIR}}").join(cfg.consensus.design_docs_dir ?? "docs/ko/design/**")
-    .split("{{LOCALE}}").join(plugin.locale ?? "en");
+    .split("{{LOCALE}}").join(plugin.locale ?? "en")
+    .split("{{REFERENCES_DIR}}").join(
+      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", plugin.locale ?? "en")).replace(/\\/g, "/"),
+    );
 }
 
 function resolveCodexBin() {
@@ -377,52 +380,64 @@ function buildCodexArgs(args, resumeTarget) {
 
 const codexLogPath = resolve(HOOKS_DIR, "codex-session.log");
 
-function emitCodexOutput(stdout, stderr, rawJson) {
-  // Log Codex session output to file — for debugging
-  try {
-    const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
-    appendFileSync(codexLogPath, `\n=== [${ts}] Codex session output ===\n`);
-    if (stdout) appendFileSync(codexLogPath, `[stdout]\n${stdout.slice(0, 5000)}\n`);
-    if (stderr) appendFileSync(codexLogPath, `[stderr]\n${stderr.slice(0, 2000)}\n`);
-  } catch { /* ignore logging failures */ }
+/** 라인 단위 실시간 스트리밍 — agent_message를 즉시 출력하고 threadId를 추적. */
+function streamCodexOutput(child, rawJson) {
+  return new Promise((resolve, reject) => {
+    let threadId = null;
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let buffer = "";
 
-  let threadId = null;
-  let sawJson = false;
-
-  for (const line of stdout.split(/\r?\n/)) {
-    if (!line.trim()) {
-      continue;
-    }
-
-    try {
-      const event = JSON.parse(line);
-      sawJson = true;
-
-      if (event.type === "thread.started" && typeof event.thread_id === "string") {
-        threadId = event.thread_id;
-      }
-
-      if (rawJson) {
+    function processLine(line) {
+      if (!line) return;
+      try {
+        const event = JSON.parse(line);
+        if (event.type === "thread.started" && typeof event.thread_id === "string") {
+          threadId = event.thread_id;
+        }
+        if (rawJson) {
+          console.log(line);
+        } else if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") {
+          console.log(event.item.text);
+        }
+      } catch {
         console.log(line);
-        continue;
       }
+    }
 
-      if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") {
-        console.log(event.item.text);
+    child.stdout.on("data", (chunk) => {
+      stdoutChunks.push(chunk);
+      buffer += chunk.toString("utf8");
+      let idx;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        processLine(buffer.slice(0, idx).trim());
+        buffer = buffer.slice(idx + 1);
       }
-    } catch {
-      console.log(line);
-    }
-  }
+    });
 
-  if (stderr?.trim()) {
-    process.stderr.write(stderr);
-    if (!stderr.endsWith("\n")) {
-      process.stderr.write("\n");
-    }
-  }
+    child.stderr.on("data", (chunk) => {
+      stderrChunks.push(chunk);
+      process.stderr.write(chunk);
+    });
 
-  return { threadId, sawJson };
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (buffer.trim()) processLine(buffer.trim());
+
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+
+      // codex-session.log에 디버깅용 기록
+      try {
+        const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
+        appendFileSync(codexLogPath, `\n=== [${ts}] Codex session output ===\n`);
+        if (stdout) appendFileSync(codexLogPath, `[stdout]\n${stdout.slice(0, 5000)}\n`);
+        if (stderr) appendFileSync(codexLogPath, `[stderr]\n${stderr.slice(0, 2000)}\n`);
+      } catch { /* ignore logging failures */ }
+
+      resolve({ stdout, stderr, threadId, exitCode: code });
+    });
+  });
 }
 
 function runRespond(args) {
@@ -452,7 +467,7 @@ function runRespond(args) {
   }
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   initPaths();
@@ -512,25 +527,20 @@ function main() {
   if (args.debugBin) {
     console.log(t("audit.debug_bin", { bin: codexBin }));
   }
-  const result = spawnResolved(codexBin, codexArgs, {
+
+  const child = spawnResolvedAsync(codexBin, codexArgs, {
     cwd: REPO_ROOT,
-    input: prompt,
     stdio: ["pipe", "pipe", "pipe"],
-    encoding: "utf8",
-    maxBuffer: 50 * 1024 * 1024, // 50MB — handle large Codex JSON event streams
   });
 
-  const { threadId } = emitCodexOutput(result.stdout ?? "", result.stderr ?? "", args.json);
+  // 프롬프트를 stdin으로 전달 후 닫기
+  child.stdin.write(prompt);
+  child.stdin.end();
 
-  if (result.error) {
-    if (result.error instanceof Error && "code" in result.error && result.error.code === "ENOENT") {
-      throw new Error(`Could not find Codex CLI. Set CODEX_BIN or ensure 'codex' is on PATH. Attempted: ${codexBin}`);
-    }
-    throw result.error;
-  }
+  const { threadId, exitCode } = await streamCodexOutput(child, args.json);
 
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+  if (exitCode !== 0) {
+    process.exit(exitCode ?? 1);
   }
 
   if (existsSync(gptPath)) {
@@ -552,10 +562,14 @@ function main() {
   stampAuditCompleted(gptPath);
 }
 
-try {
-  main();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`feedback-audit failed: ${message}`);
-  process.exit(1);
-}
+const auditLockPath = resolve(HOOKS_DIR, "audit.lock");
+main()
+  .catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`feedback-audit failed: ${message}`);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    // 정상/에러 모두 락 해제 — 다음 감사가 시작될 수 있도록
+    try { rmSync(auditLockPath, { force: true }); } catch { /* ignore */ }
+  });
