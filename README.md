@@ -225,6 +225,20 @@ cp -r .claude/hooks/consensus-loop/examples/templates/ \
 
 Adjust tags, file paths, and reference policies for your project.
 
+**5. Tell your AI agent about the consensus loop:**
+
+Add the following to your project's `CLAUDE.md` (or equivalent AI instructions file):
+
+```markdown
+## Consensus Loop
+
+This project uses a cross-model audit gate. Read the AI agent guide before submitting evidence:
+- Korean: `.claude/hooks/consensus-loop/docs/ko/AI-GUIDE.md`
+- English: `.claude/hooks/consensus-loop/docs/en/AI-GUIDE.md`
+```
+
+This ensures the AI agent understands the evidence format, tag rules, async audit behavior, and retrospective protocol.
+
 ---
 
 ## Config Reference
