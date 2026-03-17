@@ -340,3 +340,12 @@ Example for English:
   "pending_tag": "[CHANGES_REQUESTED]"
 }
 ```
+
+---
+
+## Contributors
+
+| Contributor | Contributions |
+|---|---|
+| [@berrzebb](https://github.com/berrzebb) | Core architecture, async audit, streaming, i18n, HITL gate |
+| [@dandacompany](https://github.com/dandacompany) | Security fixes (#1), Claude Code plugin support (#2) |
