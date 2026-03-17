@@ -66,7 +66,7 @@ function probeFile(subPath, name) {
 }
 
 export function findWatchFile() {
-  if (_watchPath !== undefined) return _watchPath;
+  if (_watchPath !== undefined && _watchPath !== null) return _watchPath;
   const name    = consensus.watch_file.split("/").pop();
   const subPath = consensus.watch_file.split("/").slice(0, -1).join("/");
   _watchPath = probeFile(subPath, name);
@@ -74,7 +74,7 @@ export function findWatchFile() {
 }
 
 export function findRespondFile() {
-  if (_respondPath !== undefined) return _respondPath;
+  if (_respondPath !== undefined && _respondPath !== null) return _respondPath;
   const respondName = plugin.respond_file ?? "gpt.md";
   const subPath = consensus.watch_file.split("/").slice(0, -1).join("/");
   _respondPath = probeFile(subPath, respondName);
