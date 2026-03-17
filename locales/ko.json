@@ -7,7 +7,7 @@
   "index.audit.output": "\n[consensus-loop] 출력:\n{out}\n",
   "index.audit.done_agreed": "\n[consensus-loop] 완료 — {tag} 자동 동기화 완료.\n--- 응답 요약 ---\n{content}\n---\n커밋 준비 완료.\n",
   "index.audit.done_agreed_updated": "\n[consensus-loop] 완료 (응답 갱신됨) — {tag} 자동 동기화 완료.\n--- 응답 요약 ---\n{content}\n---\n커밋 준비 완료.\n",
-  "index.audit.done_pending": "\n[consensus-loop] 완료. {tag} 항목 존재 — 검토 후 보정하세요.\n--- 응답 ---\n{content}\n---\n",
+  "index.audit.done_pending": "\n[consensus-loop] 완료. {tag} 항목 존재 — 보정 후 재제출하세요.\n--- 응답 ---\n{content}\n---\n[HANDOFF] 핸드오프를 갱신하세요 — 현재 감사 상태와 보정 대상을 memory/session_handoff.md에 기록.\n",
   "index.sync.output": "\n[consensus-loop] 자동 동기화:\n{out}\n",
   "index.sync.arrived_agreed": "\n[consensus-loop] 응답 도착 — {tag} 자동 동기화 완료.\n",
   "index.sync.arrived_pending": "\n[consensus-loop] 응답 도착. {tag} 항목 있음 — 검토하세요.\n--- 응답 ---\n{content}\n---\n",
@@ -59,7 +59,7 @@
   "respond.run_with_auto_fix": "\n--auto-fix 옵션으로 실행하면 claude -p로 보정이 자동 실행됩니다.",
   "respond.no_gpt_response": "GPT가 아직 계류 항목에 응답하지 않았습니다.",
 
-  "respond.retro.all_clear": "\n[ACTION REQUIRED] 모든 감사 항목이 합의완료되었습니다 ({rx_id}).\n사용자의 지시를 기다리지 말고 즉시 회고를 시작하세요:\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n5. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록\n6. 완료 후: echo session-self-improvement-complete\n",
+  "respond.retro.all_clear": "\n[ACTION REQUIRED — CYCLE COMPLETION] 모든 감사 항목이 합의완료되었습니다 ({rx_id}).\n사용자의 지시를 기다리지 말고 즉시 사이클을 완료하세요:\n\n== 1단계: 회고 ==\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n\n== 2단계: 커밋 + 핸드오프 ==\n5. echo session-self-improvement-complete (게이트 해제)\n6. 변경 사항 커밋 (git add → commit)\n7. 핸드오프 갱신 — memory/session_handoff.md\n\n== 3단계: 다음 작업 착수 ==\n8. gpt.md의 '## 다음 작업' 섹션을 읽고 다음 작업을 즉시 시작\n9. 다음 작업의 구현 → 증거 제출 → 루프 순환\n",
   "respond.retro.skipped_is_retro": "직전 합의 항목이 회고({rx_id})이므로 자동 회고를 건너뜁니다.",
   "respond.retro.skipped_no_script": "retro_script가 설정되지 않아 자동 회고를 건너뜁니다.",
   "retro.no_agreed_items": "(합의 완료 항목 없음)",
@@ -80,7 +80,7 @@
   "index.audit.already_running": "\n[consensus-loop] 감사가 이미 실행 중입니다 (PID {pid}). 중복 실행을 건너뜁니다.\n",
   "index.timestamp.label": "감사 완료",
 
-  "gate.protocol": "\n[ACTION REQUIRED — SESSION SELF-IMPROVEMENT]\n감사 사이클이 완료되었습니다. 사용자의 지시를 기다리지 말고 즉시 회고를 시작하세요.\n\n## 합의 완료 항목\n{context}\n\n## 즉시 수행 (자동)\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시하세요\n2. 사용자와 피드백을 교환하세요 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙을 추출하여 메모리에 기록하세요\n4. 메모리를 정리하세요 — 중복/stale 항목 제거\n5. 핸드오프를 기록하세요 — memory/session_handoff.md\n6. 저장소 동기화: node .claude/scripts/sync-handoff.mjs → git add/commit\n7. 완료 후: echo session-self-improvement-complete\n\n[Bash/Agent 차단 중 — 위 절차 완료 시 해제]\n",
+  "gate.protocol": "\n[ACTION REQUIRED — CYCLE COMPLETION]\n감사 사이클이 완료되었습니다. 사용자의 지시를 기다리지 말고 즉시 전체 사이클을 완료하세요.\n\n## 합의 완료 항목\n{context}\n\n## 1단계: 회고 (Bash 차단 중 — Read/Write/Edit만 가능)\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n\n## 2단계: 커밋 + 핸드오프 (echo 후 Bash 해제)\n5. echo session-self-improvement-complete\n6. 변경 사항 커밋 (git add → commit)\n7. 핸드오프 갱신 — memory/session_handoff.md + sync-handoff.mjs\n\n## 3단계: 다음 작업 착수\n8. gpt.md의 '## 다음 작업' 섹션을 읽고 다음 작업을 즉시 시작\n9. 구현 → 증거 제출 → 감사 → 루프 순환\n",
   "gate.blocked": "[SESSION GATE] 회고 프로토콜 미완료 — {tool} 차단됨.\nRead/Write/Edit로 메모리 정리 후 'echo session-self-improvement-complete'를 실행하세요.\n",
 
   "pdoc.title": "# 피드백 승격 인덱스",

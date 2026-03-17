@@ -7,7 +7,7 @@
   "index.audit.output": "\n[consensus-loop] Output:\n{out}\n",
   "index.audit.done_agreed": "\n[consensus-loop] Done — {tag} auto-sync complete.\n--- Response Summary ---\n{content}\n---\nReady to commit.\n",
   "index.audit.done_agreed_updated": "\n[consensus-loop] Done (response updated) — {tag} auto-sync complete.\n--- Response Summary ---\n{content}\n---\nReady to commit.\n",
-  "index.audit.done_pending": "\n[consensus-loop] Done. {tag} items exist — review and correct.\n--- Response ---\n{content}\n---\n",
+  "index.audit.done_pending": "\n[consensus-loop] Done. {tag} items exist — correct and resubmit.\n--- Response ---\n{content}\n---\n[HANDOFF] Update handoff — record current audit state and correction targets in memory/session_handoff.md.\n",
   "index.sync.output": "\n[consensus-loop] Auto-sync:\n{out}\n",
   "index.sync.arrived_agreed": "\n[consensus-loop] Response arrived — {tag} auto-sync complete.\n",
   "index.sync.arrived_pending": "\n[consensus-loop] Response arrived. {tag} items exist — review.\n--- Response ---\n{content}\n---\n",
@@ -59,7 +59,7 @@
   "respond.run_with_auto_fix": "\nRun with --auto-fix to invoke claude -p for corrections.",
   "respond.no_gpt_response": "GPT has not yet responded to pending items.",
 
-  "respond.retro.all_clear": "\n[ACTION REQUIRED] All audit items resolved ({rx_id}).\nDo not wait for user instruction — start the retrospective immediately:\n1. Present what went well / what went wrong this cycle\n2. Exchange feedback with the user (honest improvements, not praise)\n3. Extract repeatable principles from feedback → save to memory\n4. Clean up memory — remove duplicate/stale entries\n5. Record handoff — memory/session_handoff.md\n6. When done: echo session-self-improvement-complete\n",
+  "respond.retro.all_clear": "\n[ACTION REQUIRED — CYCLE COMPLETION] All audit items resolved ({rx_id}).\nDo not wait for user instruction — complete the full cycle immediately:\n\n== Phase 1: Retrospective ==\n1. Present what went well / what went wrong this cycle\n2. Exchange feedback with the user (honest improvements, not praise)\n3. Extract repeatable principles from feedback → save to memory\n4. Clean up memory — remove duplicate/stale entries\n\n== Phase 2: Commit + Handoff ==\n5. echo session-self-improvement-complete (gate clears)\n6. Commit changes (git add → commit)\n7. Update handoff — memory/session_handoff.md\n\n== Phase 3: Next Task ==\n8. Read gpt.md '## Next Task' section and start the next task immediately\n9. Implement → submit evidence → audit → loop continues\n",
   "respond.retro.skipped_is_retro": "Last synced item was a retrospective ({rx_id}) — skipping auto retrospective.",
   "respond.retro.skipped_no_script": "retro_script not configured — skipping auto retrospective.",
   "retro.no_agreed_items": "(no agreed items)",
@@ -80,7 +80,7 @@
   "index.audit.already_running": "\n[consensus-loop] Audit already running (PID {pid}). Skipping duplicate execution.\n",
   "index.timestamp.label": "Audit completed",
 
-  "gate.protocol": "\n[ACTION REQUIRED — SESSION SELF-IMPROVEMENT]\nAudit cycle completed. Do not wait for user instruction — start the retrospective immediately.\n\n## Agreed Items\n{context}\n\n## Execute Immediately (autonomous)\n1. Present what went well / what went wrong this cycle\n2. Exchange feedback with the user (honest improvements, not praise)\n3. Extract repeatable principles from feedback → save to memory\n4. Clean up memory — remove duplicate/stale entries\n5. Record handoff — memory/session_handoff.md\n6. Repo sync: node .claude/scripts/sync-handoff.mjs → git add/commit\n7. When done: echo session-self-improvement-complete\n\n[Bash/Agent blocked — unblocked upon completing the above]\n",
+  "gate.protocol": "\n[ACTION REQUIRED — CYCLE COMPLETION]\nAudit cycle completed. Do not wait for user instruction — complete the full cycle immediately.\n\n## Agreed Items\n{context}\n\n## Phase 1: Retrospective (Bash blocked — Read/Write/Edit only)\n1. Present what went well / what went wrong this cycle\n2. Exchange feedback with the user (honest improvements, not praise)\n3. Extract repeatable principles from feedback → save to memory\n4. Clean up memory — remove duplicate/stale entries\n\n## Phase 2: Commit + Handoff (echo clears Bash)\n5. echo session-self-improvement-complete\n6. Commit changes (git add → commit)\n7. Update handoff — memory/session_handoff.md + sync-handoff.mjs\n\n## Phase 3: Next Task\n8. Read gpt.md 'Next Task' section and start the next task immediately\n9. Implement → submit evidence → audit → loop continues\n",
   "gate.blocked": "[SESSION GATE] Retrospective protocol incomplete — {tool} blocked.\nUse Read/Write/Edit for memory cleanup, then run 'echo session-self-improvement-complete'.\n",
 
   "pdoc.title": "# Feedback Promotion Index",
