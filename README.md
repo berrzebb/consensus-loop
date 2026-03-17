@@ -20,13 +20,16 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | Feature | Description |
 |---|---|
 | **Consensus loop** | `trigger_tag` in `watch_file` → `audit.mjs` → waits for `agree_tag` |
+| **Async audit** | Hook spawns audit as a detached background process → returns immediately (no blocking) |
+| **Streaming output** | Codex NDJSON events are parsed line-by-line in real-time → `audit-bg.log` |
 | **Auto-sync** | `gpt.md` newer than `watch_file` → `respond.mjs` promotes/demotes tags |
 | **Quality gates** | Every file edit → matching `quality_rules` run inline (ESLint, npm audit, …) |
 | **Session gate (HITL)** | PreToolUse hook blocks Bash/commit until retrospective is complete |
-| **Facade prompts** | Lean prompts (~30 lines) reference `templates/references/{locale}/` for detailed rules |
+| **Facade prompts** | Lean prompts (~30 lines) reference `{{REFERENCES_DIR}}/` for detailed rules |
 | **Shared context** | `context.mjs` — single source for config, paths, parsers, i18n (no duplication) |
 | **Audit timestamp** | System-appended `> 감사 완료: YYYY-MM-DD HH:MM` on gpt.md (zero agent tokens) |
-| **Codex session log** | `codex-session.log` — Codex output recorded for debugging |
+| **Audit lock** | `audit.lock` prevents concurrent audits (TTL-based with PID liveness check) |
+| **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
 
 ---
 
@@ -41,7 +44,7 @@ consensus-loop/
 ├── respond.mjs            ← Syncs gpt.md → claude.md; promotes/demotes tags
 ├── retrospective.mjs      ← Sets retro marker after all items agreed
 ├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
-├── cli-runner.mjs         ← Cross-platform binary resolver
+├── cli-runner.mjs         ← Cross-platform binary resolver (sync + async spawn)
 ├── i18n.mjs               ← Standalone locale helper (fallback for non-context imports)
 │
 ├── locales/
@@ -73,6 +76,8 @@ consensus-loop/
     ├── .session-state/    ← retro-marker.json (session gate state)
     ├── ack.timestamp
     ├── session.id
+    ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
+    ├── audit-bg.log       ← Real-time streaming log from background audit
     ├── debug.log
     └── codex-session.log
 ```
@@ -84,27 +89,39 @@ consensus-loop/
 ### Full Cycle
 
 ```
-Code Edit → PostToolUse hook
+Code Edit → PostToolUse hook (index.mjs)
     │
-    ├─ watch_file + trigger_tag? → audit.mjs (GPT/Codex review)
-    │                                  ↓
-    │                            gpt.md created
-    │                                  ↓
-    │                            respond.mjs (tag sync)
-    │                                  ↓
-    │                    ┌─── [agree_tag] ───── retrospective.mjs
-    │                    │                           ↓
-    │                    │                    retro-marker set
-    │                    │                           ↓
-    │                    │                    session-gate blocks Bash
-    │                    │                           ↓
-    │                    │                    HITL retrospective (user + AI)
-    │                    │                           ↓
-    │                    │                    echo session-self-improvement-complete
-    │                    │                           ↓
-    │                    │                    git commit allowed
-    │                    │
-    │                    └─── [pending_tag] → respond.mjs --auto-fix → correction
+    ├─ watch_file + trigger_tag?
+    │       │
+    │       ├─ audit.lock exists? → skip (already running)
+    │       └─ spawn audit.mjs (detached, background)
+    │              → hook returns immediately
+    │              → audit-bg.log streams real-time output
+    │              → audit.lock created (PID + TTL)
+    │              → agent auto-registers Cron watcher
+    │
+    │   ... audit runs in background (Codex review) ...
+    │
+    │       audit.mjs completes:
+    │              → gpt.md created/updated
+    │              → respond.mjs (tag sync)
+    │              → audit.lock deleted
+    │              ↓
+    │   [Detection: Cron watcher OR next PostToolUse]
+    │              ↓
+    │    ┌─── [agree_tag] ───── retrospective.mjs
+    │    │                           ↓
+    │    │                    retro-marker set
+    │    │                           ↓
+    │    │                    session-gate blocks Bash
+    │    │                           ↓
+    │    │                    HITL retrospective (user + AI)
+    │    │                           ↓
+    │    │                    echo session-self-improvement-complete
+    │    │                           ↓
+    │    │                    git commit allowed
+    │    │
+    │    └─── [pending_tag] → respond.mjs --auto-fix → correction
     │
     ├─ gpt.md newer? → respond.mjs (auto-sync)
     ├─ planning file? → respond.mjs --gpt-only
@@ -128,11 +145,12 @@ Prompt templates are lean facades (~30 lines) that reference policy files:
 
 ```
 audit-prompt.md (30 lines)
-  → references/{{LOCALE}}/rejection-codes.md
-  → references/{{LOCALE}}/test-checklist.md
-  → references/{{LOCALE}}/output-format.md
-  → references/{{LOCALE}}/principles.md
+  → {{REFERENCES_DIR}}/rejection-codes.md
+  → {{REFERENCES_DIR}}/test-checklist.md
+  → {{REFERENCES_DIR}}/output-format.md
 ```
+
+`{{REFERENCES_DIR}}` resolves to the correct path relative to repo root at runtime (e.g., `.claude/hooks/consensus-loop/templates/references/ko/`).
 
 **To change audit criteria**: edit `references/ko/rejection-codes.md`. No code changes needed.
 
@@ -232,7 +250,8 @@ Adjust tags, file paths, and reference policies for your project.
 | `{{GPT_MD_PATH}}` | Absolute path to gpt.md |
 | `{{TRIGGER_TAG}}` / `{{AGREE_TAG}}` / `{{PENDING_TAG}}` | Tag values |
 | `{{DESIGN_DOCS_DIR}}` | Read-only design docs glob |
-| `{{LOCALE}}` | Current locale (ko/en) — for references path |
+| `{{LOCALE}}` | Current locale (ko/en) |
+| `{{REFERENCES_DIR}}` | Absolute path to `templates/references/{locale}/` from repo root |
 
 ### `fix-prompt.md`
 
@@ -244,6 +263,7 @@ Adjust tags, file paths, and reference policies for your project.
 | `{{NEXT_TASKS}}` | Next task list |
 | `{{GPT_MD}}` | Full gpt.md content |
 | `{{LOCALE}}` | Current locale |
+| `{{REFERENCES_DIR}}` | Path to `templates/references/{locale}/` from repo root |
 
 ### `retro-prompt.md`
 
@@ -251,6 +271,7 @@ Adjust tags, file paths, and reference policies for your project.
 |---|---|
 | `{{AGREED_ITEMS}}` | Recently agreed items |
 | `{{LOCALE}}` | Current locale |
+| `{{REFERENCES_DIR}}` | Path to `templates/references/{locale}/` from repo root |
 
 ---
 

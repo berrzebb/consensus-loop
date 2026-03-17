@@ -15,7 +15,7 @@
 
 import { existsSync } from "node:fs";
 import { delimiter, extname, isAbsolute, join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 
 function normalizeExecutablePath(value) {
   if (!value) {
@@ -117,4 +117,25 @@ export function spawnResolved(binary, args, options = {}) {
   }
 
   return spawnSync(binary, args, options);
+}
+
+/** Async spawn — Windows .cmd/.bat/.ps1 처리 포함, ChildProcess 반환. */
+export function spawnResolvedAsync(binary, args, options = {}) {
+  if (process.platform === "win32") {
+    if (/\.(cmd|bat)$/i.test(binary)) {
+      const line = [binary, ...args].map(quoteForCmd).join(" ");
+      return spawn(line, [], { ...options, shell: true });
+    }
+
+    if (/\.ps1$/i.test(binary)) {
+      const shell = resolveBinary("pwsh") || resolveBinary("powershell");
+      return spawn(
+        shell,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", binary, ...args],
+        options,
+      );
+    }
+  }
+
+  return spawn(binary, args, options);
 }

@@ -76,6 +76,8 @@
   "index.format.glob_in_test": "[FORMAT_GLOB_IN_TEST] Test Command에 glob 패턴이 포함되어 있습니다. 명시적 파일 목록을 사용하세요.",
   "index.format.empty_result": "[FORMAT_EMPTY_RESULT] Test Result가 비어있거나 너무 짧습니다. 터미널 출력을 복붙하세요.",
   "index.format.check_header": "\n[FORMAT-CHECK] 증거 패키지 형식 오류 — 감사를 건너뜁니다.\n아래 항목을 보충한 후 다시 제출하세요:\n\n{errors}\n\n에러 코드: FORMAT_INCOMPLETE\n",
+  "index.audit.started_async": "\n[consensus-loop] {tag} 감지 → 백그라운드 감사 시작 (PID {pid}).\n로그: {log}\n\n[ACTION REQUIRED] 감사가 백그라운드에서 실행 중입니다.\n1. 사용자의 다른 작업 요청을 계속 처리하세요.\n2. CronCreate 도구로 3분 간격 감시 태스크를 등록하세요 — audit.lock 존재 여부와 gpt.md 변경을 확인하고 respond.mjs를 실행합니다.\n3. 감사 완료 시 다음 도구 사용에서 자동 동기화됩니다.\n",
+  "index.audit.already_running": "\n[consensus-loop] 감사가 이미 실행 중입니다 (PID {pid}). 중복 실행을 건너뜁니다.\n",
   "index.timestamp.label": "감사 완료",
 
   "gate.protocol": "\n[SESSION SELF-IMPROVEMENT PROTOCOL]\n감사 사이클이 완료되었습니다. 커밋 전 회고 프로토콜을 수행하세요.\n\n## 합의 완료 항목\n{context}\n\n## 수행 절차\n1. 회고 — 이번 사이클에서 잘된 것 / 문제인 것\n2. 피드백 — 사용자와 양방향 교환\n3. 메모리 정리 — 중복/stale 항목 제거\n4. 핸드오프 — memory/session_handoff.md에 현재 작업 상태 기록 (진행중/대기/완료)\n5. 저장소 동기화 — node .claude/scripts/sync-handoff.mjs → git add/commit\n6. 완료 후: echo session-self-improvement-complete\n\n[Bash/Agent 차단 중 — 프로토콜 완료 시 해제]\n",

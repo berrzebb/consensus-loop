@@ -9,7 +9,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
 import {
@@ -678,7 +678,10 @@ function buildFixPrompt(corrections, gptMd) {
     .split("{{AGREE_TAG}}").join(cfg.consensus.agree_tag)
     .split("{{PENDING_TAG}}").join(cfg.consensus.pending_tag)
     .split("{{LOCALE}}").join(plugin.locale ?? "en")
-    .split("{{DESIGN_DOCS_DIR}}").join(consensus.design_docs_dir ?? "docs/ko/design/**");
+    .split("{{DESIGN_DOCS_DIR}}").join(consensus.design_docs_dir ?? "docs/ko/design/**")
+    .split("{{REFERENCES_DIR}}").join(
+      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", plugin.locale ?? "en")).replace(/\\/g, "/"),
+    );
 }
 
 function main() {
