@@ -156,7 +156,28 @@ audit-prompt.md (30 lines)
 
 ---
 
-## Quick Setup
+## Installation
+
+### Option A: Claude Code Plugin (Recommended)
+
+Install directly as a Claude Code plugin via npm:
+
+```bash
+claude plugin add consensus-loop
+```
+
+Or install from the repository:
+
+```bash
+claude plugin add berrzebb/consensus-loop
+```
+
+This automatically:
+- Copies the plugin to `.claude/hooks/consensus-loop/`
+- Registers `PreToolUse` and `PostToolUse` hooks
+- Creates example config and template files
+
+### Option B: Manual Setup
 
 **1. Copy into your project:**
 
