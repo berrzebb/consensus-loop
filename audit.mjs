@@ -562,7 +562,7 @@ async function main() {
   stampAuditCompleted(gptPath);
 }
 
-const auditLockPath = resolve(HOOKS_DIR, "audit.lock");
+const auditLockPath = resolve(REPO_ROOT, ".claude", "audit.lock");
 main()
   .catch((error) => {
     const message = error instanceof Error ? error.message : String(error);

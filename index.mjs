@@ -146,8 +146,8 @@ function run_audit() {
     return;
   }
 
-  // 중복 실행 방지: 락 파일로 기존 감사 프로세스 확인
-  const lockPath = resolve(HOOKS_DIR, "audit.lock");
+  // 중복 실행 방지: 락 파일은 worktree 로컬 (.claude/)에 생성
+  const lockPath = resolve(REPO_ROOT, ".claude", "audit.lock");
   const LOCK_TTL_MS = 30 * 60 * 1000; // 30분 — PID 재활용 대비 최대 유효 시간
   if (existsSync(lockPath)) {
     try {
@@ -177,7 +177,7 @@ function run_audit() {
   }
 
   // 백그라운드 프로세스로 감사 실행 — 훅 즉시 반환
-  const logPath = resolve(HOOKS_DIR, "audit-bg.log");
+  const logPath = resolve(REPO_ROOT, ".claude", "audit-bg.log");
   const logFd = openSync(logPath, "w");
 
   let child;
@@ -313,7 +313,7 @@ async function main() {
 
     // 디바운스: 연속 Edit 시 마지막 Edit만 감사 트리거
     const DEBOUNCE_MS = 10_000;
-    const debouncePath = resolve(HOOKS_DIR, "audit-debounce.ts");
+    const debouncePath = resolve(REPO_ROOT, ".claude", "audit-debounce.ts");
     const now = Date.now();
     writeFileSync(debouncePath, String(now), "utf8");
     log(`DEBOUNCE: scheduled at ${now}, waiting ${DEBOUNCE_MS}ms`);

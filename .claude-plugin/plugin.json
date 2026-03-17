@@ -1,7 +1,7 @@
 {
   "name": "consensus-loop",
-  "version": "1.0.0",
-  "description": "Two-party AI code review automation — Claude implements, Codex audits, humans approve",
+  "version": "2.0.0",
+  "description": "AI development loop — orchestrator distributes tasks to headless workers, independent auditor verifies, automated retrospective drives self-improvement. Hooks + Skills + References in one plugin.",
   "author": {
     "name": "berrzebb",
     "url": "https://github.com/berrzebb"
@@ -12,10 +12,13 @@
     "code-review",
     "consensus",
     "audit",
+    "orchestrator",
+    "headless-worker",
     "claude-code",
     "codex",
     "hooks",
-    "ai-agents"
-  ],
-  "hooks": "./hooks/hooks.json"
+    "skills",
+    "ai-agents",
+    "self-improvement"
+  ]
 }

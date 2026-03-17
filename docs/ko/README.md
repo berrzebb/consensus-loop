@@ -21,12 +21,33 @@ Claude와 외부 감사자(GPT/Codex) 간 **태그 기반 2자 합의 프로토�
 
 ```
 consensus-loop/
+│
+├── .claude-plugin/
+│   ├── plugin.json        ← 플러그인 메타데이터 (이름, 버전, 저자)
+│   └── marketplace.json   ← 마켓플레이스 등록 정보
+│
+├── hooks/
+│   └── hooks.json         ← 훅 이벤트 등록 (플러그인 시스템 자동 발견)
+│
+├── skills/                ← 슬래시 명령 스킬 (자동 발견)
+│   ├── orchestrator/      ← /orchestrator — 작업 분배
+│   ├── implementer/       ← /implementer — 헤드리스 워커 (백그라운드, 워크트리)
+│   ├── verify-implementation/ ← /verify-implementation — 머지 후 검증
+│   ├── merge-worktree/    ← /merge-worktree — 워크트리 결과 머지
+│   ├── planner/           ← /planner — 플래닝 + 작업 분해
+│   └── consensus-loop/    ← /consensus-loop — 메인 진입점
+│
+├── agents/                ← 에이전트 정의 파일
+├── commands/              ← CLI 명령 (자동 발견)
+│
 ├── context.mjs            ← 공유 모듈: config, 경로, 파서, i18n 캐시
 ├── index.mjs              ← PostToolUse 훅 진입점
 ├── audit.mjs              ← trigger_tag 감지 시 GPT/Codex 감사 실행
 ├── respond.mjs            ← claude.md ↔ gpt.md 동기화, 태그 승격/강등
 ├── retrospective.mjs      ← 합의 완료 후 회고 마커 설정
 ├── session-gate.mjs       ← PreToolUse 훅: 회고 미완료 시 Bash/커밋 차단
+├── session-start.mjs      ← SessionStart 훅: 세션 ID 할당
+├── session-stop.mjs       ← Stop 훅: 세션 종료 시 정리
 ├── cli-runner.mjs         ← CLI 바이너리 경로 해석 (Windows + Linux)
 ├── i18n.mjs               ← 로케일 헬퍼 (standalone)
 │
@@ -39,28 +60,25 @@ consensus-loop/
 │   ├── fix-prompt.md      ← Facade → references 참조
 │   ├── retro-prompt.md    ← Facade → references 참조
 │   └── references/        ← 팀 정책 파일 (코드 변경 없이 수정 가능)
-│       ├── ko/
-│       │   ├── rejection-codes.md   ← 반려 코드 정의 + 심각도
-│       │   ├── test-checklist.md    ← 테스트 충분성 기준
-│       │   ├── output-format.md     ← 감사 답변 형식 + few-shot
-│       │   ├── evidence-format.md   ← 증거 패키지 5칸 형식
-│       │   ├── memory-cleanup.md    ← 메모리 정리 기준
-│       │   ├── principles.md        ← SOLID + OWASP TOP 10
-│       │   ├── retro-questions.md   ← 회고 질문 ①~④
-│       │   └── fix-rules.md         ← 보정 규칙
-│       └── en/                      ← 영문 대응 파일
+│       ├── ko/            ← 한국어 정책
+│       └── en/            ← 영문 정책
 │
 ├── tests/
 ├── plans/                 ← 예제 플래닝 문서 (ko/en)
 ├── examples/              ← 예제 config + 템플릿
 │
 └── (자동 생성 — gitignored)
+    REPO_ROOT/.claude/에 생성:
+    ├── audit.lock         ← 백그라운드 감사 PID + TTL (동시 실행 방지)
+    ├── audit-bg.log       ← 실시간 감사 로그
+    └── audit-debounce.ts  ← 연속 편집 디바운스 타임스탬프
+    플러그인 로컬:
     ├── config.json
     ├── .session-state/    ← retro-marker.json (세션 게이트 상태)
     ├── ack.timestamp
     ├── session.id
     ├── debug.log
-    └── codex-session.log  ← Codex 세션 출력 (디버깅용)
+    └── codex-session.log
 ```
 
 ---
@@ -138,35 +156,55 @@ audit-prompt.md (30줄)
 
 ## 빠른 시작
 
-**1. 복사:**
+### 방법 A: Claude Code 플러그인 (권장)
 
+```bash
+claude plugin add berrzebb/consensus-loop
+```
+
+모든 훅(`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`)과 스킬이 자동 등록됩니다.
+
+### 방법 B: 로컬 개발 (`--plugin-dir`)
+
+```bash
+claude --plugin-dir .claude/hooks/consensus-loop
+```
+
+소스 변경 후 캐시 갱신 필요: `rm -rf ~/.claude/plugins/cache/consensus-loop`
+
+### 방법 C: 수동 설정 (레거시)
+
+**1. 복사:**
 ```
 cp -r consensus-loop  <your-repo>/.claude/hooks/
 ```
 
 **2. 훅 등록 (`.claude/settings.local.json`):**
-
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-start.mjs" }] }
+    ],
     "PreToolUse": [
       { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-gate.mjs", "timeout": 10000 }] }
     ],
     "PostToolUse": [
-      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs" }] }
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs", "timeout": 30000 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-stop.mjs", "async": true, "timeout": 120 }] }
     ]
   }
 }
 ```
 
 **3. config 복사 후 수정:**
-
 ```
 cp examples/config.example.json config.json
 ```
 
 **4. 템플릿 + references 복사:**
-
 ```
 cp -r examples/templates/ templates/
 ```

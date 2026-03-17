@@ -56,12 +56,12 @@ npx vitest run tests/specific-file.test.ts
 
 증거를 제출하면(watch_file에 `[trigger_tag]` 포함하여 저장):
 
-1. PostToolUse 훅이 감사를 **백그라운드**에서 시작합니다
+1. PostToolUse 훅이 감사를 **백그라운드**에서 시작합니다 (연속 편집 시 10초 디바운스 적용)
 2. 훅은 즉시 반환되므로 **다른 작업을 계속**하세요
-3. `audit.lock` 파일이 존재하면 감사가 진행 중입니다
+3. `.claude/audit.lock` 파일이 존재하면 감사가 진행 중입니다 (repo `.claude/` 디렉토리에 생성)
 4. **CronCreate로 3분 간격 감시 태스크를 등록**하세요:
-   - `audit.lock` 존재 여부 확인
-   - `node .claude/hooks/consensus-loop/respond.mjs` 실행 (멱등)
+   - `.claude/audit.lock` 존재 여부 확인
+   - `node ${CLAUDE_PLUGIN_ROOT}/respond.mjs` 실행 (멱등, 플러그인 모드) 또는 `node .claude/hooks/consensus-loop/respond.mjs` (레거시)
    - 결과가 있으면 사용자에게 보고
 5. 감사가 완료되면 `audit.lock`이 삭제되고 결과가 자동 동기화됩니다
 

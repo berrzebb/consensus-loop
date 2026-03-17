@@ -28,7 +28,11 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Facade prompts** | Lean prompts (~30 lines) reference `{{REFERENCES_DIR}}/` for detailed rules |
 | **Shared context** | `context.mjs` — single source for config, paths, parsers, i18n (no duplication) |
 | **Audit timestamp** | System-appended `> 감사 완료: YYYY-MM-DD HH:MM` on gpt.md (zero agent tokens) |
-| **Audit lock** | `audit.lock` prevents concurrent audits (TTL-based with PID liveness check) |
+| **Debounce** | Rapid consecutive edits are debounced (10 s) — only the last edit triggers an audit |
+| **Audit lock** | `audit.lock` in `REPO_ROOT/.claude/` prevents concurrent audits (TTL + PID liveness) |
+| **Session lifecycle** | `SessionStart` / `Stop` hooks manage session ID and cleanup |
+| **Subagent tracking** | `SubagentStop` hook captures implementer agent results |
+| **Plugin skills** | 6 slash-command skills: orchestrator, implementer, verify, merge-worktree, planner, consensus-loop |
 | **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
 
 ---
@@ -38,12 +42,35 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 ```
 consensus-loop/
 │
+├── .claude-plugin/
+│   └── plugin.json        ← Plugin metadata (name, version, author)
+│
+├── hooks/
+│   └── hooks.json         ← Hook event registration (auto-discovered by plugin system)
+│
+├── skills/                ← Slash-command skills (auto-discovered)
+│   ├── orchestrator/      ← /orchestrator — distributes tasks to workers
+│   ├── implementer/       ← /implementer — headless worker (background, worktree)
+│   ├── verify-implementation/ ← /verify-implementation — post-merge verification
+│   ├── merge-worktree/    ← /merge-worktree — merge worktree results back
+│   ├── planner/           ← /planner — planning + work breakdown
+│   └── consensus-loop/    ← /consensus-loop — main entry point
+│
+├── agents/                ← Agent definition files
+│   └── implementer.md     ← Implementer agent persona
+│
+├── commands/              ← CLI commands (auto-discovered)
+│
 ├── context.mjs            ← Shared module: config, paths, parsers, i18n cache
 ├── index.mjs              ← PostToolUse hook entry point
 ├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag detected
 ├── respond.mjs            ← Syncs gpt.md → claude.md; promotes/demotes tags
 ├── retrospective.mjs      ← Sets retro marker after all items agreed
 ├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
+├── session-start.mjs      ← SessionStart hook: handoff sync + context injection
+├── session-stop.mjs       ← Stop hook: handoff sync + auto-commit
+├── subagent-stop.mjs      ← SubagentStop hook: detects worker completion + deferred retro
+├── handoff-writer.mjs     ← Handoff sync between repo and Claude memory (portable)
 ├── cli-runner.mjs         ← Cross-platform binary resolver (sync + async spawn)
 ├── i18n.mjs               ← Standalone locale helper (fallback for non-context imports)
 │
@@ -71,13 +98,15 @@ consensus-loop/
 ├── plans/                 ← Example planning docs (ko/en)
 ├── examples/              ← Example config and templates
 │
-└── (auto-generated — gitignored)
+└── (auto-generated — gitignored, written to REPO_ROOT/.claude/)
+    ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
+    ├── audit-bg.log       ← Real-time streaming log from background audit
+    └── audit-debounce.ts  ← Debounce timestamp for consecutive edits
+    (plugin-local — gitignored within plugin dir)
     ├── config.json
     ├── .session-state/    ← retro-marker.json (session gate state)
     ├── ack.timestamp
     ├── session.id
-    ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
-    ├── audit-bg.log       ← Real-time streaming log from background audit
     ├── debug.log
     └── codex-session.log
 ```
@@ -160,24 +189,29 @@ audit-prompt.md (30 lines)
 
 ### Option A: Claude Code Plugin (Recommended)
 
-Install directly as a Claude Code plugin via npm:
-
-```bash
-claude plugin add consensus-loop
-```
-
-Or install from the repository:
+Install from the GitHub repository:
 
 ```bash
 claude plugin add berrzebb/consensus-loop
 ```
 
-This automatically:
-- Copies the plugin to `.claude/hooks/consensus-loop/`
-- Registers `PreToolUse` and `PostToolUse` hooks
-- Creates example config and template files
+This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`) and makes skills available as slash commands.
 
-### Option B: Manual Setup
+### Option B: Local Development (`--plugin-dir`)
+
+For local development or testing before publishing:
+
+```bash
+claude --plugin-dir .claude/hooks/consensus-loop
+```
+
+The plugin system caches files to `~/.claude/plugins/cache/`. After modifying source files, clear the cache to pick up changes:
+
+```bash
+rm -rf ~/.claude/plugins/cache/consensus-loop
+```
+
+### Option C: Manual Setup (Legacy)
 
 **1. Copy into your project:**
 
@@ -190,20 +224,17 @@ cp -r consensus-loop  <your-repo>/.claude/hooks/
 ```json
 {
   "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-start.mjs" }] }
+    ],
     "PreToolUse": [
-      {
-        "hooks": [
-          { "type": "command", "command": "node .claude/hooks/consensus-loop/session-gate.mjs", "timeout": 10000 }
-        ]
-      }
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-gate.mjs", "timeout": 10000 }] }
     ],
     "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          { "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs" }
-        ]
-      }
+      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs", "timeout": 30000 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-stop.mjs", "async": true, "timeout": 120 }] }
     ]
   }
 }
@@ -325,10 +356,10 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
 
 ## Porting to Another Project
 
-1. Copy `consensus-loop/` into `.claude/hooks/`
+1. `claude plugin add berrzebb/consensus-loop` (or copy into `.claude/hooks/`)
 2. Edit `config.json` — set tags, paths, quality rules
 3. Edit `templates/references/{locale}/` — set team policies
-4. Register hooks in `.claude/settings.local.json`
+4. (Manual only) Register hooks in `.claude/settings.local.json`
 
 Example for English:
 

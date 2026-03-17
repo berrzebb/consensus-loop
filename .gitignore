@@ -14,3 +14,9 @@ audit-debounce.ts
 codex-session.log
 hook-debug.log
 .session-state/
+
+# Build artifacts
+*.zip
+
+# Deprecated files
+.claude-plugin/marketplace.json

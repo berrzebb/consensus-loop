@@ -88,6 +88,11 @@
   "gate.protocol": "\n[ACTION REQUIRED — CYCLE COMPLETION]\n감사 사이클이 완료되었습니다. 사용자의 지시를 기다리지 말고 즉시 전체 사이클을 완료하세요.\n\n## 합의 완료 항목\n{context}\n\n## 1단계: 회고 (Bash 차단 중 — Read/Write/Edit만 가능)\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n\n## 2단계: 커밋 + 핸드오프 (echo 후 Bash 해제)\n5. echo session-self-improvement-complete\n6. 변경 사항 커밋 (git add → commit)\n7. 핸드오프 갱신 — memory/session_handoff.md + sync-handoff.mjs\n\n## 3단계: 다음 작업 착수\n8. gpt.md의 '## 다음 작업' 섹션을 읽고 다음 작업을 즉시 시작\n9. 구현 → 증거 제출 → 감사 → 루프 순환\n",
   "gate.blocked": "[SESSION GATE] 회고 프로토콜 미완료 — {tool} 차단됨.\nRead/Write/Edit로 메모리 정리 후 'echo session-self-improvement-complete'를 실행하세요.\n",
 
+  "subagent.stop.completed": "[consensus-loop] 서브에이전트 '{agent}' 완료.",
+  "subagent.stop.deferred_retro": "[ACTION REQUIRED — 위임된 회고]\nimplementer 세션에서 회고({rx_id})가 발생했지만 이 세션으로 위임되었습니다.\n합의 항목:\n{items}\n\n이 세션에서 회고 프로토콜을 완료하세요:\n1. 잘된 것 / 문제인 것 정리\n2. 사용자와 피드백 교환\n3. 반복 가능한 원칙 → 메모리 기록\n4. echo session-self-improvement-complete",
+  "handoff.sync.success": "[handoff] 메모리 동기화 완료: {dir}",
+  "handoff.sync.skip": "[handoff] 건너뜀: {reason}",
+
   "pdoc.title": "# 피드백 승격 인덱스",
   "pdoc.meta": "> 상태: `active` | 유형: 피드백 루프 승격 기준 | 생성: `.claude/hooks/consensus-loop/respond.mjs`",
   "pdoc.purpose_heading": "## 목적",

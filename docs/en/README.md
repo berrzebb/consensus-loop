@@ -21,12 +21,33 @@ Automatically enforces an edit → audit → agree → retro → commit cycle.
 
 ```
 consensus-loop/
+│
+├── .claude-plugin/
+│   ├── plugin.json        ← Plugin metadata (name, version, author)
+│   └── marketplace.json   ← Marketplace listing for plugin discovery
+│
+├── hooks/
+│   └── hooks.json         ← Hook event registration (auto-discovered)
+│
+├── skills/                ← Slash-command skills (auto-discovered)
+│   ├── orchestrator/      ← /orchestrator — distributes tasks to workers
+│   ├── implementer/       ← /implementer — headless worker (background, worktree)
+│   ├── verify-implementation/ ← /verify-implementation — post-merge verification
+│   ├── merge-worktree/    ← /merge-worktree — merge worktree results back
+│   ├── planner/           ← /planner — planning + work breakdown
+│   └── consensus-loop/    ← /consensus-loop — main entry point
+│
+├── agents/                ← Agent definition files
+├── commands/              ← CLI commands (auto-discovered)
+│
 ├── context.mjs            ← Shared module: config, paths, parsers, i18n cache
 ├── index.mjs              ← PostToolUse hook entry point
 ├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag detected
 ├── respond.mjs            ← Syncs claude.md ↔ gpt.md, promotes/demotes tags
 ├── retrospective.mjs      ← Sets retro marker after all items agreed
 ├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
+├── session-start.mjs      ← SessionStart hook: assigns session ID
+├── session-stop.mjs       ← Stop hook: cleanup on session end
 ├── cli-runner.mjs         ← Cross-platform binary resolver
 ├── i18n.mjs               ← Standalone locale helper
 │
@@ -42,6 +63,11 @@ consensus-loop/
 ├── examples/
 │
 └── (auto-generated — gitignored)
+    Written to REPO_ROOT/.claude/:
+    ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
+    ├── audit-bg.log       ← Real-time streaming log from background audit
+    └── audit-debounce.ts  ← Debounce timestamp for consecutive edits
+    Plugin-local:
     ├── config.json
     ├── .session-state/    ← retro-marker.json
     ├── debug.log
@@ -101,8 +127,26 @@ Single source for all scripts: config (1 parse), memoized paths, tag constants, 
 
 ## Quick Setup
 
+### Option A: Claude Code Plugin (Recommended)
+
+```bash
+claude plugin add berrzebb/consensus-loop
+```
+
+All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`) and skills are registered automatically.
+
+### Option B: Local Development (`--plugin-dir`)
+
+```bash
+claude --plugin-dir .claude/hooks/consensus-loop
+```
+
+After modifying source files, clear cache: `rm -rf ~/.claude/plugins/cache/consensus-loop`
+
+### Option C: Manual Setup (Legacy)
+
 1. Copy `consensus-loop/` into `.claude/hooks/`
-2. Register PreToolUse (session-gate) + PostToolUse (index) in `.claude/settings.local.json`
+2. Register hooks in `.claude/settings.local.json` (SessionStart, PreToolUse, PostToolUse, Stop)
 3. Copy and edit `config.json`
 4. Copy and edit `templates/` + `references/`
 

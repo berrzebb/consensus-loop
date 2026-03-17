@@ -56,12 +56,12 @@ Known unresolved items.
 
 When you submit evidence (save watch_file with `[trigger_tag]`):
 
-1. The PostToolUse hook starts the audit in the **background**
+1. The PostToolUse hook starts the audit in the **background** (consecutive edits are debounced for 10 s)
 2. The hook returns immediately — **continue with other work**
-3. If `audit.lock` exists, an audit is in progress
+3. If `.claude/audit.lock` exists, an audit is in progress (created in repo's `.claude/` directory)
 4. **Register a 3-minute Cron watcher via CronCreate**:
-   - Check `audit.lock` existence
-   - Run `node .claude/hooks/consensus-loop/respond.mjs` (idempotent)
+   - Check `.claude/audit.lock` existence
+   - Run `node ${CLAUDE_PLUGIN_ROOT}/respond.mjs` (idempotent, plugin mode) or `node .claude/hooks/consensus-loop/respond.mjs` (legacy)
    - Report results to user if any
 5. When the audit completes, `audit.lock` is deleted and results auto-sync
 
