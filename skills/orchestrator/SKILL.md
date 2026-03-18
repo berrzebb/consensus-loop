@@ -40,7 +40,7 @@ When a task is selected:
    - Done criteria: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/done-criteria.md`
    - Evidence format: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/evidence-format.md`
 3. Compose worker prompt with task context
-4. Invoke `/implementer` skill with composed context as `$ARGUMENTS`
+4. Spawn implementer via **Agent tool** with `isolation: "worktree"` (NOT `/implementer` skill — skill does not provide worktree isolation). The agent definition is at `agents/implementer.md`.
 5. Monitor: check for audit.lock, verdict file changes, worker exit
 
 ## Result Verification
