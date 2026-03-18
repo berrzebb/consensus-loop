@@ -49,11 +49,36 @@ When worker completes:
 
 1. Read updated handoff
 2. Read verdict file
-3. If `[agree_tag]` → mark task complete, select next task
+3. If `[agree_tag]` → worker commits WIP → proceed to **Retrospective & Merge**
 4. If `[pending_tag]` → read rejection codes, decide:
    - Same worker retry (minor fix)
    - New worker with corrected context (major rework)
    - Escalate to user (ambiguous)
+
+## Retrospective & Merge
+
+After `[agree_tag]` and worker WIP commit:
+
+1. **Retrospective protocol** activates automatically (`retro-marker.json` → `retro_pending: true`)
+   - `session-gate.mjs` blocks Bash/Agent until retrospective completes
+   - Only Read/Write/Edit/Glob/Grep/TodoWrite are allowed during retrospective
+2. **Perform retrospective** (see `templates/references/${locale}/retro-questions.md`):
+   - What went well
+   - What was problematic
+   - Memory cleanup + update (see `templates/references/${locale}/memory-cleanup.md`)
+   - Bidirectional feedback
+3. **Release gate**: run `session-self-improvement-complete` in Bash → marker resets to `retro_pending: false`
+4. **Squash merge**: invoke `/merge-worktree` to squash all WIP commits into a single structured commit on the target branch
+5. **Write session handoff**: update handoff file with completed task status + select next task
+6. **Loop**: return to Session Start → present next available task
+
+## Planning
+
+When a task requires new track definition or existing track adjustment:
+
+1. Invoke `/planner` with the requirement description
+2. Planner produces/updates: README.md, work-breakdown.md, execution-order.md, work-catalog.md
+3. Review planner output before proceeding to task distribution
 
 ## Dependency Resolution
 
@@ -72,3 +97,6 @@ If blocked → skip → select next unblocked task.
 - Do NOT skip dependency checks — blocked tasks will fail
 - Do NOT retry the same approach 3+ times — escalate
 - Do NOT hardcode file paths — read from config.json
+- Do NOT skip retrospective — session-gate blocks commits until retrospective completes
+- Do NOT let implementer perform squash merge — that is YOUR responsibility via `/merge-worktree`
+- Do NOT forget to write session handoff after each commit

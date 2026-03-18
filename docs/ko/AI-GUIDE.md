@@ -2,19 +2,40 @@
 
 > 이 문서는 consensus-loop 훅이 설치된 프로젝트에서 작업하는 **AI 에이전트(Claude)**를 위한 가이드입니다.
 
-## 당신의 역할
+## 역할 체인
 
-당신은 **구현자**입니다. 코드를 작성하고, 테스트하고, 증거를 제출합니다. 별도의 **감사자**(GPT/Codex)가 당신의 작업을 독립적으로 검토합니다. 감사자가 승인할 때까지 작업은 완료가 아닙니다.
+consensus-loop는 4개 역할이 순환하는 멀티 에이전트 프로토콜입니다:
 
-## 핵심 사이클
+| 역할 | 책임 | 격리 |
+|------|------|------|
+| **planner** | 트랙 정의 + 실행계획(work-breakdown) 조정 | fork (Opus) |
+| **orchestrator** | execution-order에서 WB 선택 → implementer 분배 → 회고 → squash merge → 핸드오프 | 메인 세션 |
+| **implementer** | worktree에서 구현 + 테스트 + 증거 제출 + WIP 커밋 | worktree (Sonnet) |
+| **auditor** | 증거 독립 검증 → 합의/반려 판정 | 별도 프로세스 (GPT/Codex) |
+
+## 전체 사이클
 
 ```
-1. 코드 작성/수정
-2. 증거 제출 → watch_file에 [trigger_tag] 태그와 함께 작성
-3. 훅이 자동으로 감사를 백그라운드에서 시작 (비동기 — 블로킹 없음)
-4. 감사 완료 → 결과가 자동 동기화됨
-5a. [agree_tag] → 합의 완료 → 회고 프로토콜 수행 → 커밋
-5b. [pending_tag] → 보정 필요 → 지적 사항 수정 → 2번으로 돌아감
+planner ─── 트랙 정의 + 실행계획 조정
+    ↓
+orchestrator ─── execution-order에서 WB 선택 → implementer 분배
+    ↓
+┌─── implementer (worktree) ──────────────────────────┐
+│  1. 코드 구현 + 테스트                                │
+│  2. /verify-implementation (CQ/T/CC/CL/S/I 검증)     │
+│  3. 증거 제출 → watch_file에 [trigger_tag]            │
+│  4. 감사 자동 시작 (비동기)                            │
+│  5a. [agree_tag] → WIP 커밋                          │
+│  5b. [pending_tag] → 보정 → 3번으로                   │
+└──────────────────────────────────────────────────────┘
+    ↓ (합의완료 + WIP 커밋)
+회고 프로토콜 (session-gate 차단)
+    → 잘된 것 / 문제인 것 / 메모리 갱신
+    → "session-self-improvement-complete" → 게이트 해제
+    ↓
+orchestrator: /merge-worktree → squash merge → 단일 커밋
+    ↓
+orchestrator: 세션 핸드오프 작성 → 다음 WB 선택 → 반복
 ```
 
 ## 증거 패키지 형식
@@ -81,21 +102,25 @@ npx vitest run tests/specific-file.test.ts
 2. 코드를 수정
 3. 동일한 증거 패키지를 갱신하여 다시 제출 (`[trigger_tag]` 유지)
 
-## 회고 프로토콜 (자동 시작)
+## 회고 프로토콜
 
-모든 항목이 `[agree_tag]`로 닫히면 session-gate가 활성화되고 **사용자의 지시 없이 즉시 회고를 시작**해야 합니다:
+회고는 합의완료 후 **모든 상황에서 필수**로 진행됩니다. session-gate가 활성화되면 Bash/Agent가 차단되어 회고를 건너뛸 수 없습니다.
 
-1. Bash/Agent가 차단됩니다 (Read/Write/Edit만 가능)
-2. **즉시** 사용자에게 회고를 제시합니다:
+> **기술적 참고**: 서브에이전트(implementer)는 session-gate를 통과하므로 직접 회고를 수행할 수 없습니다. 이 경우 `deferred_to_orchestrator`가 설정되어 orchestrator가 대신 수행합니다. 이것은 원칙의 예외가 아니라 기술적 한계에 의한 대행입니다.
+
+회고 절차:
+
+1. Bash/Agent 차단 (Read/Write/Edit만 가능)
+2. **즉시** 회고를 제시합니다 (사용자 지시를 기다리지 않음):
    - 이번 사이클에서 잘된 것
    - 문제였던 것 (솔직한 개선점)
    - 개선할 것
 3. 사용자와 피드백을 교환합니다
 4. 피드백에서 반복 가능한 원칙을 메모리에 기록합니다
 5. 메모리를 정리합니다 — 중복/stale 항목 제거
-6. 핸드오프를 기록합니다
-7. `echo session-self-improvement-complete` 실행 → 게이트 해제
-8. 커밋 가능
+6. `echo session-self-improvement-complete` 실행 → 게이트 해제
+7. orchestrator: `/merge-worktree` → squash merge → 단일 커밋
+8. orchestrator: 세션 핸드오프 작성 → 다음 WB 선택
 
 ## 정책 파일 참조
 

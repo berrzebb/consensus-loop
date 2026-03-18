@@ -42,9 +42,10 @@ Known unresolved items.
 
 ## Commit Rules
 
-- During work: `WIP(scope): short summary`
+- WIP commit only after `[agree_tag]`: `WIP(scope): short summary`
 - Never use feat/fix/refactor during implementation
-- Final commit is created by merge-worktree skill (squash)
+- Retrospective and squash merge are **orchestrator's responsibility** — not yours
+- Orchestrator runs `/merge-worktree` to create the final structured commit
 
 ## Scripts Available
 

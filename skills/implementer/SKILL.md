@@ -87,16 +87,17 @@ Use a single Write (not sequential Edits) — the hook has debounce but atomic W
 
 Monitor the respond file (from config `plugin.respond_file` relative to watch_file dir):
 
-- **[agree_tag]** → proceed to retrospective
+- **[agree_tag]** → proceed to WIP commit
 - **[pending_tag]** → read rejection codes → fix → resubmit
 
-### 6. Commit
+### 6. WIP Commit
 
-After consensus or retrospective:
+After `[agree_tag]` (consensus reached):
 
 - `git add <changed files>` (specific files only, no `git add .`)
-- `git commit -m "WIP(scope): short summary"` (always WIP prefix during work)
-- Final squash commit is created by merge-worktree skill
+- `git commit -m "WIP(scope): short summary"` (always WIP prefix)
+- **Stop here** — retrospective and squash merge are the **orchestrator's** responsibility
+- The orchestrator will perform retrospective → gate release → `/merge-worktree` squash
 
 ## Scripts Available
 

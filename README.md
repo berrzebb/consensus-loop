@@ -112,7 +112,14 @@ consensus-loop/
 │
 ├── tests/
 ├── plans/                 ← Work planning docs (ko/en)
-├── examples/              ← Example config, plans, and templates
+├── examples/              ← Example config, plans, templates, and references
+│   ├── config.example.json
+│   ├── plans/             ← Example execution-order, work-catalog, sample-track
+│   └── templates/
+│       ├── {ko,en}/       ← Example audit/fix/retro prompts
+│       └── references/
+│           ├── ko/        ← Example Korean policy files (9 × .example.md)
+│           └── en/        ← Example English policy files (9 × .example.md)
 │
 └── (auto-generated — gitignored, written to REPO_ROOT/.claude/)
     ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
@@ -131,7 +138,31 @@ consensus-loop/
 
 ## How It Works
 
-### Full Cycle
+### Multi-Agent Lifecycle
+
+```
+planner ─── Track definition + execution plan adjustment
+    ↓
+orchestrator ─── Select WB from execution-order → distribute to implementer
+    ↓
+┌─── implementer (worktree, background) ──────────────────┐
+│  Implement → /verify-implementation → submit evidence    │
+│  [agree_tag] → WIP commit                               │
+│  [pending_tag] → fix → resubmit                         │
+└──────────────────────────────────────────────────────────┘
+    ↓ (agree_tag + WIP commit)
+orchestrator resumes
+    ↓
+Retrospective protocol (session-gate blocks Bash/Agent)
+    → memory cleanup + principles update
+    → "session-self-improvement-complete" → gate release
+    ↓
+/merge-worktree → squash merge → single structured commit
+    ↓
+Write session handoff → select next WB → loop
+```
+
+### Hook Cycle (PostToolUse)
 
 ```
 Code Edit → PostToolUse hook (index.mjs)
@@ -154,17 +185,19 @@ Code Edit → PostToolUse hook (index.mjs)
     │              ↓
     │   [Detection: Cron watcher OR next PostToolUse]
     │              ↓
-    │    ┌─── [agree_tag] ───── retrospective.mjs
+    │    ┌─── [agree_tag] ───── implementer WIP commit
     │    │                           ↓
-    │    │                    retro-marker set
+    │    │                    retrospective.mjs → retro-marker set
     │    │                           ↓
     │    │                    session-gate blocks Bash
     │    │                           ↓
-    │    │                    HITL retrospective (user + AI)
+    │    │                    orchestrator: HITL retrospective
     │    │                           ↓
     │    │                    echo session-self-improvement-complete
     │    │                           ↓
-    │    │                    git commit allowed
+    │    │                    orchestrator: /merge-worktree → squash commit
+    │    │                           ↓
+    │    │                    orchestrator: write handoff → next WB
     │    │
     │    └─── [pending_tag] → respond.mjs --auto-fix → correction
     │

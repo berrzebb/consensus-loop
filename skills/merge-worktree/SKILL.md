@@ -11,6 +11,15 @@ allowed-tools: Read, Grep, Glob, Bash(git *)
 
 Squash-merge the current worktree branch back into the target branch. All WIP commits become one structured commit.
 
+## Who Runs This
+
+This skill is invoked by the **orchestrator** after:
+1. Implementer's `[agree_tag]` consensus reached
+2. Implementer's WIP commit completed
+3. **Retrospective protocol completed** (session-gate released via `session-self-improvement-complete`)
+
+Do NOT run this skill if retrospective is still pending — `session-gate.mjs` will block git commands.
+
 ## Current Context
 
 - Git dir: `!git rev-parse --git-dir`

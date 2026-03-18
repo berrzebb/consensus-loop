@@ -76,10 +76,18 @@ Known unresolved items.
 
 Use a single Write (not sequential Edits) — atomic Write is preferred.
 
-### 5. Commit
+### 5. Handle Audit Result
+
+Monitor the respond file (from config `plugin.respond_file` relative to watch_file dir):
+
+- **[agree_tag]** → proceed to WIP commit
+- **[pending_tag]** → read rejection codes → fix → resubmit (return to step 4)
+
+### 6. WIP Commit (after [agree_tag] only)
 
 - `git add <changed files>` (specific files only, no `git add .`)
 - `git commit -m "WIP(scope): short summary"`
+- **Stop here** — retrospective and squash merge are the **orchestrator's** responsibility
 
 ## Anti-Patterns
 

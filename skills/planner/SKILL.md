@@ -10,13 +10,21 @@ allowed-tools: Read, Write, Grep, Glob, Bash(node *), Bash(cat *), Bash(ls *)
 
 # Planner Protocol
 
-You receive a requirement description and produce a structured execution plan.
+You are responsible for **defining tracks** and **adjusting execution plans**. This includes both creating new tracks and modifying existing ones.
+
+## Responsibilities
+
+1. **Track definition** — create or update README.md (Problem / Goal / Prerequisite / Exit Condition)
+2. **Work breakdown** — create or update work-breakdown.md (WB items with goals, prerequisites, tests, exit conditions)
+3. **Execution order** — register new tracks or adjust ordering/prerequisites in execution-order.md
+4. **Work catalog** — synchronize work-catalog.md with any added/modified/removed WB items
 
 ## Input
 
 - Requirement description (from user or orchestrator)
 - Planning directories: read from `${CLAUDE_SKILL_DIR}/../../config.json` → `consensus.planning_dirs`
 - Existing execution order: `<planning_dir>/execution-order.md`
+- Existing work catalog: `<planning_dir>/work-catalog.md`
 - Existing gap matrix: read from repo (project-specific location)
 - Done criteria: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/done-criteria.md`
 
@@ -80,8 +88,20 @@ One sentence — verifiable, not vague.
 3. **No vague goals** — "improve performance" is not a goal. "Reduce p95 latency to < 200ms" is.
 4. **Verify prerequisites** — check that required tracks/WBs are actually completed before planning dependent work
 5. **ko/en both** — produce documents in both locales
-6. **Register in execution-order** — if this is a new track, add it to `execution-order.md` with correct prerequisite chain
-7. **Check for hidden dependencies** — cross-reference with `infra-layer-gaps.md` to catch infra gaps that would block this work
+6. **Register in execution-order** — new track → add to `execution-order.md`; existing track adjustment → update ordering/prerequisites
+7. **Sync work-catalog** — any WB addition/modification/removal must be reflected in `work-catalog.md`
+8. **Check for hidden dependencies** — cross-reference with `infra-layer-gaps.md` to catch infra gaps that would block this work
+
+## Adjusting Existing Tracks
+
+When modifying an existing track (not creating new):
+
+1. Read current README.md + work-breakdown.md for the track
+2. Read execution-order.md to understand the track's position in the dependency graph
+3. Make targeted changes — do not rewrite documents that are already correct
+4. Update execution-order.md if prerequisites or ordering changed
+5. Update work-catalog.md if WB items were added/modified/removed
+6. Verify that downstream tracks (those that depend on this track) are not broken by the change
 
 ## Anti-Patterns
 
@@ -89,3 +109,5 @@ One sentence — verifiable, not vague.
 - Do NOT create WBs without exit conditions
 - Do NOT mix BE and FE in the same WB without explicit contract pairs
 - Do NOT plan without reading existing execution-order (may conflict or duplicate)
+- Do NOT adjust execution-order without checking downstream impact
+- Do NOT modify work-catalog without corresponding work-breakdown changes

@@ -2,19 +2,40 @@
 
 > This document is for **AI agents (Claude)** working in projects with the consensus-loop hook installed.
 
-## Your Role
+## Role Chain
 
-You are the **implementer**. You write code, run tests, and submit evidence. A separate **auditor** (GPT/Codex) independently reviews your work. Your work is not complete until the auditor approves it.
+consensus-loop is a multi-agent protocol with 4 roles in a cycle:
 
-## Core Cycle
+| Role | Responsibility | Isolation |
+|------|---------------|-----------|
+| **planner** | Track definition + execution plan (work-breakdown) adjustment | fork (Opus) |
+| **orchestrator** | Select WB from execution-order → distribute to implementer → retrospective → squash merge → handoff | main session |
+| **implementer** | Implement in worktree + test + submit evidence + WIP commit | worktree (Sonnet) |
+| **auditor** | Independent evidence verification → agree/reject verdict | separate process (GPT/Codex) |
+
+## Full Cycle
 
 ```
-1. Write/modify code
-2. Submit evidence → write to watch_file with [trigger_tag]
-3. Hook automatically starts audit in background (async — non-blocking)
-4. Audit completes → results auto-synced
-5a. [agree_tag] → consensus reached → perform retrospective → commit
-5b. [pending_tag] → corrections needed → fix issues → return to step 2
+planner ─── Track definition + execution plan adjustment
+    ↓
+orchestrator ─── Select WB from execution-order → distribute to implementer
+    ↓
+┌─── implementer (worktree) ──────────────────────────┐
+│  1. Implement code + tests                           │
+│  2. /verify-implementation (CQ/T/CC/CL/S/I checks)  │
+│  3. Submit evidence → watch_file with [trigger_tag]  │
+│  4. Audit starts automatically (async)               │
+│  5a. [agree_tag] → WIP commit                        │
+│  5b. [pending_tag] → fix → return to step 3          │
+└──────────────────────────────────────────────────────┘
+    ↓ (consensus + WIP commit)
+Retrospective protocol (session-gate blocks Bash/Agent)
+    → what went well / what went wrong / memory update
+    → "session-self-improvement-complete" → gate release
+    ↓
+orchestrator: /merge-worktree → squash merge → single commit
+    ↓
+orchestrator: write session handoff → select next WB → loop
 ```
 
 ## Evidence Package Format
@@ -81,21 +102,25 @@ Correction procedure:
 2. Fix the code
 3. Update the same evidence package and resubmit (keep `[trigger_tag]`)
 
-## Retrospective Protocol (Auto-Start)
+## Retrospective Protocol
 
-When all items reach `[agree_tag]`, the session-gate activates and you must **start the retrospective immediately without waiting for user instruction**:
+Retrospective is **mandatory in all contexts** after consensus is reached. The session-gate blocks Bash/Agent, making it impossible to skip.
 
-1. Bash/Agent are blocked (only Read/Write/Edit allowed)
-2. **Immediately** present the retrospective to the user:
+> **Technical note**: Subagents (implementer) pass through session-gate and cannot perform retrospective directly. In this case, `deferred_to_orchestrator` is set and the orchestrator performs it on their behalf. This is not an exception to the principle — it is a technical limitation requiring delegation.
+
+Retrospective procedure:
+
+1. Bash/Agent blocked (only Read/Write/Edit allowed)
+2. **Immediately** present the retrospective (do not wait for user instruction):
    - What went well this cycle
    - What went wrong (honest improvements)
    - What to improve
 3. Exchange feedback with the user
 4. Extract repeatable principles from feedback → save to memory
 5. Clean up memory — remove duplicate/stale entries
-6. Record handoff
-7. Run `echo session-self-improvement-complete` → gate clears
-8. Commit allowed
+6. Run `echo session-self-improvement-complete` → gate clears
+7. orchestrator: `/merge-worktree` → squash merge → single structured commit
+8. orchestrator: write session handoff → select next WB
 
 ## Policy File References
 
