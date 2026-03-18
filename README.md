@@ -250,8 +250,8 @@ audit-prompt.md (30 lines)
 Add the marketplace, then install the plugin:
 
 ```bash
-claude marketplace add berrzebb/claude-plugins
-claude plugin add consensus-loop@claude-plugins
+claude marketplace add berrzebb/berrzebb-plugins
+claude plugin add consensus-loop@berrzebb-plugins
 ```
 
 This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and makes skills available as slash commands.
@@ -426,7 +426,7 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
 
 ## Porting to Another Project
 
-1. `claude marketplace add berrzebb/claude-plugins && claude plugin add consensus-loop@claude-plugins` (or copy into `.claude/hooks/`)
+1. `claude marketplace add berrzebb/berrzebb-plugins && claude plugin add consensus-loop@berrzebb-plugins` (or copy into `.claude/hooks/`)
 2. Edit `config.json` — set tags, paths, quality rules
 3. Edit `templates/references/{locale}/` — set team policies
 4. (Manual only) Register hooks in `.claude/settings.local.json`

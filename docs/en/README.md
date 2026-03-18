@@ -129,8 +129,8 @@ Single source for all scripts: config (1 parse), memoized paths, tag constants, 
 ### Option A: Claude Code Plugin (Recommended)
 
 ```bash
-claude marketplace add berrzebb/claude-plugins
-claude plugin add consensus-loop@claude-plugins
+claude marketplace add berrzebb/berrzebb-plugins
+claude plugin add consensus-loop@berrzebb-plugins
 ```
 
 All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and skills are registered automatically.

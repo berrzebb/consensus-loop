@@ -161,8 +161,8 @@ audit-prompt.md (30줄)
 ### 방법 A: Claude Code 플러그인 (권장)
 
 ```bash
-claude marketplace add berrzebb/claude-plugins
-claude plugin add consensus-loop@claude-plugins
+claude marketplace add berrzebb/berrzebb-plugins
+claude plugin add consensus-loop@berrzebb-plugins
 ```
 
 All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and skills are registered automatically.
