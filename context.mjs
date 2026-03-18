@@ -249,8 +249,9 @@ export function extractStatusFromLine(line) {
 /** Find a `## heading` section in markdown and return { start, end, lines }. */
 export function readSection(markdown, heading) {
   const lines = typeof markdown === "string" ? markdown.split(/\r?\n/) : markdown;
+  const escaped = escapeRe(heading);
   const start = lines.findIndex((line) =>
-    new RegExp(`^##\\s+${heading}\\s*$`).test((typeof line === "string" ? line : "").trim())
+    new RegExp(`^##\\s+${escaped}\\s*$`).test((typeof line === "string" ? line : "").trim())
   );
   if (start < 0) return null;
   const end = lines.findIndex((line, idx) =>

@@ -25,12 +25,20 @@ import {
   extractApprovedIdsFromSection, mergeIdSets,
 } from "./context.mjs";
 
-const claudePath = findWatchFile();
+// Lazy-initialized in main() — avoid dirname(null) crash at module load time
+// and allow test environments to set up mocks before paths are resolved.
+let claudePath = null;
+let gptPath = null;
+let planningDirs = [];
 const respondFile      = plugin.respond_file ?? "gpt.md";
-const gptPath          = claudePath ? resolve(dirname(claudePath), respondFile) : null;
-const planningDirs     = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d.replace(/^\/+/, "")));
 const watchFileDisplay = consensus.watch_file;
 const gptFileDisplay   = `${dirname(consensus.watch_file)}/${respondFile}`;
+
+function initPaths() {
+  claudePath = findWatchFile();
+  gptPath = claudePath ? resolve(dirname(claudePath), respondFile) : null;
+  planningDirs = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d.replace(/^\/+/, "")));
+}
 
 function usage() {
   console.log(`Usage: node .claude/hooks/consensus-loop/respond.mjs [options]
@@ -685,6 +693,7 @@ function buildFixPrompt(corrections, gptMd) {
 }
 
 function main() {
+  initPaths();
   const args = parseArgs(process.argv.slice(2));
 
   if (!existsSync(gptPath)) {

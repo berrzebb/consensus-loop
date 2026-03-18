@@ -18,8 +18,8 @@ import {
   findWatchFile, findRespondFile, t, isHookEnabled, configMissing,
 } from "./context.mjs";
 
-const debugLog = resolve(HOOKS_DIR, plugin.debug_log);
-const ackFile  = resolve(HOOKS_DIR, plugin.ack_file);
+const debugLog = resolve(HOOKS_DIR, plugin.debug_log ?? "debug.log");
+const ackFile  = resolve(HOOKS_DIR, plugin.ack_file ?? "ack.timestamp");
 
 function log(msg) {
   const ts = new Date().toISOString().replace("T", " ").slice(0, 19);
@@ -250,8 +250,10 @@ function run_quality_checks(filePath) {
     if (m.filenames && !m.filenames.includes(filename)) continue;
     if (normalized.includes("/node_modules/")) continue;
 
-    // Shell injection 방지: filePath를 환경변수로 전달하여 쉘 메타문자 무력화
-    const cmd = rule.command.replace("{file}", "$HOOK_TARGET_FILE");
+    // Cross-platform: use platform-appropriate env var syntax for shell expansion.
+    // $VAR on Unix, %VAR% on Windows cmd.exe.
+    const envRef = process.platform === "win32" ? "%HOOK_TARGET_FILE%" : "$HOOK_TARGET_FILE";
+    const cmd = rule.command.replace("{file}", envRef);
     const result = spawnSync(cmd, {
       cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: true,
       env: { ...process.env, HOOK_TARGET_FILE: filePath },

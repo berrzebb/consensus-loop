@@ -23,8 +23,7 @@ Claude와 외부 감사자(GPT/Codex) 간 **태그 기반 2자 합의 프로토�
 consensus-loop/
 │
 ├── .claude-plugin/
-│   ├── plugin.json        ← 플러그인 메타데이터 (이름, 버전, 저자)
-│   └── marketplace.json   ← 마켓플레이스 등록 정보
+│   └── plugin.json        ← Plugin metadata (name, version, author)
 │
 ├── hooks/
 │   └── hooks.json         ← 훅 이벤트 등록 (플러그인 시스템 자동 발견)
@@ -162,10 +161,11 @@ audit-prompt.md (30줄)
 ### 방법 A: Claude Code 플러그인 (권장)
 
 ```bash
-claude plugin add berrzebb/consensus-loop
+claude marketplace add berrzebb/claude-plugins
+claude plugin add consensus-loop@claude-plugins
 ```
 
-모든 훅(`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`)과 스킬이 자동 등록됩니다.
+All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and skills are registered automatically.
 
 ### 방법 B: 로컬 개발 (`--plugin-dir`)
 

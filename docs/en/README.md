@@ -23,8 +23,7 @@ Automatically enforces an edit → audit → agree → retro → commit cycle.
 consensus-loop/
 │
 ├── .claude-plugin/
-│   ├── plugin.json        ← Plugin metadata (name, version, author)
-│   └── marketplace.json   ← Marketplace listing for plugin discovery
+│   └── plugin.json        ← Plugin metadata (name, version, author)
 │
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered)
@@ -130,10 +129,11 @@ Single source for all scripts: config (1 parse), memoized paths, tag constants, 
 ### Option A: Claude Code Plugin (Recommended)
 
 ```bash
-claude plugin add berrzebb/consensus-loop
+claude marketplace add berrzebb/claude-plugins
+claude plugin add consensus-loop@claude-plugins
 ```
 
-All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`) and skills are registered automatically.
+All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and skills are registered automatically.
 
 ### Option B: Local Development (`--plugin-dir`)
 

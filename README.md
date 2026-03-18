@@ -50,8 +50,7 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 consensus-loop/
 │
 ├── .claude-plugin/
-│   ├── plugin.json        ← Plugin metadata (name, version, author)
-│   └── marketplace.json   ← Marketplace listing for plugin discovery
+│   └── plugin.json        ← Plugin metadata (name, version, author)
 │
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered by plugin system)
@@ -248,10 +247,11 @@ audit-prompt.md (30 lines)
 
 ### Option A: Claude Code Plugin (Recommended)
 
-Install from the GitHub repository:
+Add the marketplace, then install the plugin:
 
 ```bash
-claude plugin add berrzebb/consensus-loop
+claude marketplace add berrzebb/claude-plugins
+claude plugin add consensus-loop@claude-plugins
 ```
 
 This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and makes skills available as slash commands.
@@ -426,7 +426,7 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
 
 ## Porting to Another Project
 
-1. `claude plugin add berrzebb/consensus-loop` (or copy into `.claude/hooks/`)
+1. `claude marketplace add berrzebb/claude-plugins && claude plugin add consensus-loop@claude-plugins` (or copy into `.claude/hooks/`)
 2. Edit `config.json` — set tags, paths, quality rules
 3. Edit `templates/references/{locale}/` — set team policies
 4. (Manual only) Register hooks in `.claude/settings.local.json`
