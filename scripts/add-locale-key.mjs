@@ -14,8 +14,8 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function findLocalesDir() {
-  // Try: script is at skills/implementer/scripts/ → locales is at ../../..locales/
-  const fromScript = resolve(__dirname, "..", "..", "..", "locales");
+  // Try: script is at scripts/ → locales is at ../locales/
+  const fromScript = resolve(__dirname, "..", "locales");
   if (existsSync(fromScript)) return fromScript;
 
   // Fallback: git root + .claude/hooks/consensus-loop/locales

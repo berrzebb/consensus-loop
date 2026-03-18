@@ -52,8 +52,8 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 - Write code following project rules (`.claude/rules/`)
 - Run bundled scripts for zero-token validation:
   ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" type-safety
-  node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" hardcoded
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" type-safety
+  node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" hardcoded
   ```
 
 ### 3. Verify (before submitting evidence)
@@ -112,16 +112,16 @@ Corrections are expected to be scoped — fix only what was rejected. Do NOT exp
 
 ## Scripts Quick Reference
 
-Bundled at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/`:
+Bundled at `${CLAUDE_PLUGIN_ROOT}/scripts/`:
 
 ```bash
 # Code pattern scan (0 tokens, replaces expensive grep)
-node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" all
-node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" type-safety
-node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" hardcoded
+node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" all
+node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" type-safety
+node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" hardcoded
 
 # Add locale key to ko + en at once
-node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/add-locale-key.mjs" "key" "ko_value" "en_value"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/add-locale-key.mjs" "key" "ko_value" "en_value"
 ```
 
 ## Anti-Patterns

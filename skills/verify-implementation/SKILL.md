@@ -43,7 +43,7 @@ for file in <changed_files>; do npx eslint "$file"; done
 npx tsc --noEmit
 
 # CQ-4: No forbidden patterns in new code
-node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs type-safety
+node ${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs type-safety
 ```
 
 Record: PASS or FAIL with file:line for each failure.
@@ -79,7 +79,7 @@ Record: PASS, FAIL, or N/A.
 ### Step 6: Security (S)
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs hardcoded
+node ${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs hardcoded
 ```
 
 For new API endpoints: check for auth guard in route handler.

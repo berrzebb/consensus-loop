@@ -2,7 +2,7 @@
 
 ## Scripts Quick Reference
 
-Bundled at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/`:
+Bundled at `${CLAUDE_PLUGIN_ROOT}/scripts/`:
 
 | Script | Usage | Purpose |
 |--------|-------|---------|
