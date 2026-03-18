@@ -5,8 +5,8 @@ tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 isolation: worktree
 skills:
-  - verify-implementation
-  - consensus-loop
+  - consensus-loop:verify
+  - consensus-loop:guide
 ---
 
 # Implementer Protocol
@@ -111,6 +111,18 @@ If the audit takes too long (> 5 minutes), check `audit.lock` liveness and repor
 - `git add <changed files>` (specific files only, no `git add .`)
 - `git commit -m "WIP(scope): short summary"`
 - **Stop here** — retrospective and squash merge are the **orchestrator's** responsibility
+
+## Correction Rounds (via SendMessage)
+
+The orchestrator may send follow-up correction instructions via **SendMessage** after an audit returns `[pending_tag]`. When you receive a correction message:
+
+1. Read the rejection codes and specific file:line references
+2. Apply fixes **in the same worktree** — do NOT create new files unnecessarily
+3. Re-run affected tests
+4. Update evidence in watch file (Write, full replace) with `[trigger_tag]`
+5. Wait for the next audit verdict
+
+Corrections are expected to be scoped — fix only what was rejected. Do NOT expand scope.
 
 ## Anti-Patterns
 

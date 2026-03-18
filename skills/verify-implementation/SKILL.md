@@ -1,5 +1,5 @@
 ---
-name: verify-implementation
+name: consensus-loop:verify
 description: Run all done-criteria checks before evidence submission. Executes verify-* skills sequentially and produces an integrated report. Use after implementing code, before submitting evidence to the consensus loop.
 argument-hint: "[optional: specific category - CQ, T, CC, CL, S, I, FV]"
 model: claude-sonnet-4-6

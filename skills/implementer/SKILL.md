@@ -1,5 +1,5 @@
 ---
-name: implementer
+name: consensus-loop:implementer
 description: Headless worker — receives task + context, implements code, runs tests, submits evidence, handles audit corrections. Spawned by orchestrator, not invoked directly by users.
 argument-hint: "<task description or handoff section>"
 user-invocable: false
@@ -10,7 +10,7 @@ allowed-tools: Read, Edit, Write, Grep, Glob, Bash(npx *), Bash(node *), Bash(gi
 
 # Implementer Protocol
 
-> **Deprecated**: This skill is a legacy entry point. The authoritative implementer definition is `agents/implementer.md` which provides `isolation: worktree`. The orchestrator should spawn the implementer via the **Agent tool**, not this skill. This skill remains for reference and its bundled scripts (`scripts/audit-scan.mjs`, `scripts/add-locale-key.mjs`).
+> **Deprecated**: This skill is a legacy entry point. The authoritative implementer definition is `agents/implementer.md` which provides `isolation: worktree`. The orchestrator should spawn the implementer via the **Agent tool** (or SendMessage for corrections), not this skill. This skill remains for reference and its bundled scripts (`scripts/audit-scan.mjs`, `scripts/add-locale-key.mjs`).
 
 You are a headless worker. You receive a task with context and execute it autonomously.
 

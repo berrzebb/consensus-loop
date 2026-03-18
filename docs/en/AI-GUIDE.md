@@ -22,7 +22,7 @@ orchestrator ─── Select WB from execution-order → distribute to implemen
     ↓
 ┌─── implementer (worktree) ──────────────────────────┐
 │  1. Implement code + tests                           │
-│  2. /verify-implementation (CQ/T/CC/CL/S/I checks)  │
+│  2. consensus-loop:verify (CQ/T/CC/CL/S/I checks)   │
 │  3. Submit evidence → watch_file with [trigger_tag]  │
 │  4. Audit starts automatically (async)               │
 │  5a. [agree_tag] → WIP commit                        │
@@ -33,7 +33,7 @@ Retrospective protocol (session-gate blocks Bash/Agent)
     → what went well / what went wrong / memory update
     → "session-self-improvement-complete" → gate release
     ↓
-orchestrator: /merge-worktree → squash merge → single commit
+orchestrator: /consensus-loop:merge → squash merge → single commit
     ↓
 orchestrator: write session handoff → select next WB → loop
 ```
@@ -119,7 +119,7 @@ Retrospective procedure:
 4. Extract repeatable principles from feedback → save to memory
 5. Clean up memory — remove duplicate/stale entries
 6. Run `echo session-self-improvement-complete` → gate clears
-7. orchestrator: `/merge-worktree` → squash merge → single structured commit
+7. orchestrator: `/consensus-loop:merge` → squash merge → single structured commit
 8. orchestrator: write session handoff → select next WB
 
 ## Policy File References

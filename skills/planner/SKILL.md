@@ -1,5 +1,5 @@
 ---
-name: planner
+name: consensus-loop:planner
 description: Analyzes requirements and produces execution plans + work breakdowns. Spawned by orchestrator for design tasks requiring cross-module reasoning.
 argument-hint: "<requirement description>"
 disable-model-invocation: true

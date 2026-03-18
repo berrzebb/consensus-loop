@@ -1,6 +1,6 @@
 ---
-name: merge-worktree
-description: Squash-merge the current worktree branch into the target branch with a structured commit message. Use after verify-implementation passes and audit reaches consensus.
+name: consensus-loop:merge
+description: Squash-merge the current worktree branch into the target branch with a structured commit message. Use after consensus-loop:verify passes and audit reaches consensus.
 argument-hint: "[target-branch]"
 disable-model-invocation: true
 context: fork
@@ -200,4 +200,4 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
 - Do NOT merge if `git status --porcelain` shows uncommitted changes
 - Do NOT force-push after merge
 - Do NOT delete the worktree without user confirmation
-- Do NOT merge if verify-implementation has unresolved failures
+- Do NOT merge if `consensus-loop:verify` has unresolved failures

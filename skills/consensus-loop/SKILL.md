@@ -1,5 +1,5 @@
 ---
-name: consensus-loop
+name: consensus-loop:guide
 description: Guide for writing proper evidence packages for consensus-loop code review. Use when writing or editing the feedback watch file, submitting code for audit review, or when pending_tag items need to be addressed.
 version: 1.0.0
 ---

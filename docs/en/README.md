@@ -29,13 +29,13 @@ consensus-loop/
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered)
 │
-├── skills/                ← Slash-command skills (auto-discovered)
-│   ├── orchestrator/      ← /orchestrator — distributes tasks to workers
-│   ├── implementer/       ← /implementer — headless worker (background, worktree)
-│   ├── verify-implementation/ ← /verify-implementation — post-merge verification
-│   ├── merge-worktree/    ← /merge-worktree — merge worktree results back
-│   ├── planner/           ← /planner — planning + work breakdown
-│   └── consensus-loop/    ← /consensus-loop — main entry point
+├── skills/                ← Slash-command skills (auto-discovered, prefix: consensus-loop:)
+│   ├── orchestrator/      ← consensus-loop:orchestrator — multi-track distribution + agent registry
+│   ├── implementer/       ← consensus-loop:implementer — headless worker (worktree, SendMessage corrections)
+│   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
+│   ├── merge-worktree/    ← consensus-loop:merge — squash merge worktree results
+│   ├── planner/           ← consensus-loop:planner — planning + work breakdown
+│   └── consensus-loop/    ← consensus-loop:guide — evidence package guide
 │
 ├── agents/                ← Agent definition files
 ├── commands/              ← CLI commands (auto-discovered)

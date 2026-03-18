@@ -34,7 +34,7 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Session lifecycle** | `SessionStart` / `Stop` hooks manage session ID and cleanup |
 | **Subagent tracking** | `SubagentStop` hook captures implementer agent results |
 | **Handoff sync** | `handoff-writer.mjs` — bidirectional sync between repo handoff doc and Claude memory |
-| **Plugin skills** | 6 slash-command skills: orchestrator, implementer, verify, merge-worktree, planner, consensus-loop |
+| **Plugin skills** | 6 slash-command skills: `consensus-loop:orchestrator`, `consensus-loop:implementer`, `consensus-loop:verify`, `consensus-loop:merge`, `consensus-loop:planner`, `consensus-loop:guide` |
 | **CLI commands** | 2 slash commands: `/consensus-audit` (manual audit), `/consensus-status` (current state) |
 | **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
 
@@ -52,13 +52,13 @@ consensus-loop/
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered by plugin system)
 │
-├── skills/                ← Slash-command skills (auto-discovered)
-│   ├── orchestrator/      ← /orchestrator — distributes tasks to workers
-│   ├── implementer/       ← /implementer — headless worker (background, worktree)
-│   ├── verify-implementation/ ← /verify-implementation — post-merge verification
-│   ├── merge-worktree/    ← /merge-worktree — merge worktree results back
-│   ├── planner/           ← /planner — planning + work breakdown
-│   └── consensus-loop/    ← /consensus-loop — main entry point
+├── skills/                ← Slash-command skills (auto-discovered, prefix: consensus-loop:)
+│   ├── orchestrator/      ← consensus-loop:orchestrator — multi-track distribution + agent registry
+│   ├── implementer/       ← consensus-loop:implementer — headless worker (worktree, SendMessage corrections)
+│   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
+│   ├── merge-worktree/    ← consensus-loop:merge — squash merge worktree results
+│   ├── planner/           ← consensus-loop:planner — planning + work breakdown
+│   └── consensus-loop/    ← consensus-loop:guide — evidence package guide
 │
 ├── agents/
 │   └── implementer.md     ← Implementer agent persona
@@ -141,17 +141,20 @@ consensus-loop/
 ### Multi-Agent Lifecycle
 
 ```
-planner ─── Track definition + execution plan adjustment
+consensus-loop:planner ─── Track definition + execution plan adjustment
     ↓
-orchestrator ─── Select WB from execution-order → distribute to implementer
-    ↓
-┌─── implementer (worktree, background) ──────────────────┐
-│  Implement → /verify-implementation → submit evidence    │
-│  [agree_tag] → WIP commit                               │
-│  [pending_tag] → fix → resubmit                         │
-└──────────────────────────────────────────────────────────┘
-    ↓ (agree_tag + WIP commit)
-orchestrator resumes
+consensus-loop:orchestrator ─── Select WBs → scope validation → parallel distribute
+    ↓                                        (non-overlapping files only)
+┌─── Track A (worktree) ──────┐  ┌─── Track B (worktree) ──────┐
+│  implementer: implement      │  │  implementer: implement      │
+│  → consensus-loop:verify     │  │  → consensus-loop:verify     │
+│  → submit evidence           │  │  → submit evidence           │
+│  [pending_tag] → SendMessage │  │  [agree_tag] → WIP commit   │
+│  → correction → resubmit    │  │                               │
+│  [agree_tag] → WIP commit   │  │                               │
+└──────────────────────────────┘  └──────────────────────────────┘
+    ↓ (all tracks: agree_tag + WIP commit)
+orchestrator resumes (per-track)
     ↓
 Retrospective protocol (session-gate blocks Bash/Agent)
     → memory cleanup + principles update
@@ -195,7 +198,7 @@ Code Edit → PostToolUse hook (index.mjs)
     │    │                           ↓
     │    │                    echo session-self-improvement-complete
     │    │                           ↓
-    │    │                    orchestrator: /merge-worktree → squash commit
+    │    │                    orchestrator: /consensus-loop:merge → squash commit
     │    │                           ↓
     │    │                    orchestrator: write handoff → next WB
     │    │

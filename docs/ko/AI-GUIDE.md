@@ -22,7 +22,7 @@ orchestrator ─── execution-order에서 WB 선택 → implementer 분배
     ↓
 ┌─── implementer (worktree) ──────────────────────────┐
 │  1. 코드 구현 + 테스트                                │
-│  2. /verify-implementation (CQ/T/CC/CL/S/I 검증)     │
+│  2. consensus-loop:verify (CQ/T/CC/CL/S/I 검증)      │
 │  3. 증거 제출 → watch_file에 [trigger_tag]            │
 │  4. 감사 자동 시작 (비동기)                            │
 │  5a. [agree_tag] → WIP 커밋                          │
@@ -33,7 +33,7 @@ orchestrator ─── execution-order에서 WB 선택 → implementer 분배
     → 잘된 것 / 문제인 것 / 메모리 갱신
     → "session-self-improvement-complete" → 게이트 해제
     ↓
-orchestrator: /merge-worktree → squash merge → 단일 커밋
+orchestrator: /consensus-loop:merge → squash merge → 단일 커밋
     ↓
 orchestrator: 세션 핸드오프 작성 → 다음 WB 선택 → 반복
 ```
@@ -119,7 +119,7 @@ npx vitest run tests/specific-file.test.ts
 4. 피드백에서 반복 가능한 원칙을 메모리에 기록합니다
 5. 메모리를 정리합니다 — 중복/stale 항목 제거
 6. `echo session-self-improvement-complete` 실행 → 게이트 해제
-7. orchestrator: `/merge-worktree` → squash merge → 단일 커밋
+7. orchestrator: `/consensus-loop:merge` → squash merge → 단일 커밋
 8. orchestrator: 세션 핸드오프 작성 → 다음 WB 선택
 
 ## 정책 파일 참조

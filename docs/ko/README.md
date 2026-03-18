@@ -29,13 +29,13 @@ consensus-loop/
 ├── hooks/
 │   └── hooks.json         ← 훅 이벤트 등록 (플러그인 시스템 자동 발견)
 │
-├── skills/                ← 슬래시 명령 스킬 (자동 발견)
-│   ├── orchestrator/      ← /orchestrator — 작업 분배
-│   ├── implementer/       ← /implementer — 헤드리스 워커 (백그라운드, 워크트리)
-│   ├── verify-implementation/ ← /verify-implementation — 머지 후 검증
-│   ├── merge-worktree/    ← /merge-worktree — 워크트리 결과 머지
-│   ├── planner/           ← /planner — 플래닝 + 작업 분해
-│   └── consensus-loop/    ← /consensus-loop — 메인 진입점
+├── skills/                ← 슬래시 명령 스킬 (자동 발견, 접두사: consensus-loop:)
+│   ├── orchestrator/      ← consensus-loop:orchestrator — 멀티트랙 분배 + 에이전트 레지스트리
+│   ├── implementer/       ← consensus-loop:implementer — 헤드리스 워커 (워크트리, SendMessage 보정)
+│   ├── verify-implementation/ ← consensus-loop:verify — done-criteria 검증
+│   ├── merge-worktree/    ← consensus-loop:merge — 워크트리 결과 스쿼시 머지
+│   ├── planner/           ← consensus-loop:planner — 플래닝 + 작업 분해
+│   └── consensus-loop/    ← consensus-loop:guide — 증거 패키지 가이드
 │
 ├── agents/                ← 에이전트 정의 파일
 ├── commands/              ← CLI 명령 (자동 발견)
