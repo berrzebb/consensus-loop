@@ -49,7 +49,7 @@ Known unresolved items.
 
 ## Scripts Available
 
-Run from skill directory:
+Bundled scripts (available in both skill and agent contexts):
 
 ```bash
 # Code pattern scan (0 tokens, replaces grep)

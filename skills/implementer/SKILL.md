@@ -103,7 +103,7 @@ After `[agree_tag]` (consensus reached):
 
 ## Scripts Available
 
-All scripts are bundled with this skill at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/`:
+Scripts at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/` (shared with agent):
 
 | Script | Purpose |
 |--------|---------|

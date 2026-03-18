@@ -9,7 +9,7 @@ node -e "console.log(JSON.parse(require('fs').readFileSync('${CLAUDE_PLUGIN_ROOT
 
 ## Work Breakdown Template
 
-See example: [examples/work-breakdown.example.md](examples/work-breakdown.example.md)
+See example: `${CLAUDE_PLUGIN_ROOT}/examples/plans/en/work-breakdown.example.md`
 
 ## Rules
 
