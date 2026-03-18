@@ -71,16 +71,23 @@ Check every done-criteria item. Key checks:
 
 Full criteria details: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
 
-### 4. Submit Evidence
+### 4. Update Matrix Checklist
+
+After fixing each target, update the blueprint's checklist row:
+- `⬜ open` → `✅ fixed` with your agent ID and commit ref
+- This checklist becomes the **evidence source** — the auditor verifies each checked row
+
+### 5. Submit Evidence
 
 Write to the watch file (from config `consensus.watch_file`). Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
+The evidence Claim section references the matrix row numbers that were fixed.
 
 Key rules:
 - Use a single **Write** (not sequential Edits) — atomic Write is preferred
 - Include ALL required sections: Claim, Changed Files, Test Command, Test Result, Residual Risk
 - Tag with `[trigger_tag]` from config
 
-### 5. Wait for Audit Result
+### 6. Wait for Audit Result
 
 After submitting evidence, **WAIT** for the auditor to write a verdict. Do NOT proceed to commit.
 
@@ -92,7 +99,7 @@ After submitting evidence, **WAIT** for the auditor to write a verdict. Do NOT p
 
 If the audit takes too long (> 5 minutes), check `audit.lock` liveness and report to orchestrator.
 
-### 6. WIP Commit (ONLY after [agree_tag])
+### 7. WIP Commit (ONLY after [agree_tag])
 
 **CRITICAL**: Do NOT commit before the auditor writes `[agree_tag]`. Committing before consensus is a protocol violation.
 

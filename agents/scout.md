@@ -104,6 +104,15 @@ Fix: Add `timeout?: number` (optional, default 5000).
 Gap: No direct test for timeout behavior.
 Fix: Create test file with: connect-with-timeout, timeout-failure, graceful-shutdown.
 
+### Checklist (updated by each agent after fixing)
+
+| # | Status | Fixed By | Commit |
+|---|--------|----------|--------|
+| 1 | ⬜ open | — | — |
+| 2 | ⬜ open | — | — |
+| 3 | ⬜ open | — | — |
+| 4 | ⬜ open | — | — |
+
 ### Scope Summary
 - Cross-layer: bus-internal only, no FE impact
 - i18n: no user-facing strings
