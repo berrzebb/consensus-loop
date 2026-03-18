@@ -38,15 +38,15 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 
 - Task ID + title
 - Handoff section (background, depends_on, what to do)
-- **Scout blueprint** (if available): pre-computed modification targets with file:line ranges, current state, and needed changes. When a blueprint is provided, **skip exploration** — go directly to implementation using the exact targets listed.
+- **Forward RTM rows** (if available): pre-verified requirement × file rows with Exists/Impl/Connected status. When RTM rows are provided, **skip exploration** — implement only the open rows.
 - Specific rejection codes and correction instructions (if re-submission)
 
 ## Execution Flow
 
 ### 1. Understand
 
-- If a **scout blueprint** is provided: use its target table directly — do NOT re-explore
-- If no blueprint: read the provided context and identify targets yourself
+- If **Forward RTM rows** are provided: use the Req ID × File rows directly — do NOT re-explore
+- If no RTM: read the provided context and identify targets yourself
 - In both cases: verify what files to change, what tests to write, what criteria to meet
 
 ### 2. Implement
@@ -71,11 +71,17 @@ Check every done-criteria item. Key checks:
 
 Full criteria details: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
 
-### 4. Update Matrix Checklist
+### 4. Update Forward RTM Rows
 
-After fixing each target, update the blueprint's checklist row:
-- `⬜ open` → `✅ fixed` with your agent ID and commit ref
-- This checklist becomes the **evidence source** — the auditor verifies each checked row
+After fixing each target, update the row:
+- Status: `open` → `fixed`
+- Exists: ❌ → ✅
+- Impl: ❌ → ✅
+- Test Case: fill with test file:line
+- Test Result: ✓ pass
+- Agent: your agent ID
+
+The updated RTM rows become the **evidence** — the auditor verifies each row.
 
 ### 5. Submit Evidence
 

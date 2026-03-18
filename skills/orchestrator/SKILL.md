@@ -96,58 +96,59 @@ Issue multiple Agent tool calls in a single message:
 - Record each `agentId` in handoff on return
 - Maximum 3 concurrent agents (rate limit prevention)
 
-## Scout Phase (scope confirmation)
+## Scout Phase (RTM generation)
 
-When the orchestrator receives tasks, it **dispatches a scout first** to confirm the actual scope.
-The scout produces a modification blueprint (matrix) that all downstream agents share, eliminating redundant exploration.
+Before distributing work, the orchestrator dispatches a **scout** to produce a Requirements Traceability Matrix (RTM) by comparing work-breakdown definitions against the actual codebase.
+
+The RTM is the **single source of truth** that all agents share. It eliminates redundant exploration.
 
 ### Flow
 
 ```
-Orchestrator reviews tasks
+Orchestrator selects track(s)
     ↓
-code_map (0 tokens) → matrix overview
+Scout reads: execution-order → README → work-breakdown → codebase
     ↓
-Scout agent (1× read-only) → modification blueprint
+Produces 3 matrices:
+  Forward RTM   — requirement → code → test (gap detection)
+  Backward RTM  — test → code → requirement (orphan detection)
+  Bidirectional — cross-reference summary (coverage analysis)
     ↓
-Blueprint shared with ALL implementers → zero exploration
+Orchestrator distributes Forward RTM rows to implementers
 ```
 
 ### Procedure
 
-1. **Generate code map matrix** for each task's target scope:
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/code-map.mjs" <target-dir> --ranges --filter fn,class,iface
-   ```
-   Or use MCP tool `code_map(path, filter, format="matrix")` if available (cached, faster).
-
-2. **Spawn scout agent** — read-only, deep analysis:
+1. **Spawn scout agent** — read-only, thorough analysis (Sonnet):
    ```json
    {
-     "prompt": "[task descriptions + code map matrix]",
+     "prompt": "[target tracks + design doc paths]",
      "subagent_type": "scout",
-     "description": "scout scope confirmation"
+     "description": "scout RTM for [track-name]"
    }
    ```
-   The scout uses Sonnet for thorough analysis — shallow scanning defeats the purpose.
    Scout agent definition: `agents/scout.md`
+   RTM format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/traceability-matrix.md`
 
-3. **Receive blueprint** — the scout confirms the actual work scope:
-   - Target table: `| File | Lines | Symbol | Action |`
-   - Context per target: current state + needed change
-   - Scope boundaries: what IS and IS NOT in scope
-   - Cross-task dependencies: which targets are shared between tasks
+2. **Receive 3 matrices**:
+   - **Forward RTM**: Req ID × File with Exists/Impl/Test Case/Connected columns filled
+   - **Backward RTM**: Existing tests traced back to requirements (orphan detection)
+   - **Bidirectional summary**: Gap analysis — requirements without tests, tests without requirements
 
-4. **Orchestrator uses blueprint to**:
-   - Finalize task assignments (split/merge tasks if scope differs from initial plan)
-   - Validate non-overlapping scopes for parallel distribution
-   - Compose each implementer's prompt with the relevant subset of the blueprint
+3. **Orchestrator uses Forward RTM to**:
+   - Identify open rows (⬜) → these are the work items to distribute
+   - Validate non-overlapping file scopes for parallel distribution
+   - Assign rows to implementers by Req ID grouping
+
+4. **Orchestrator uses Backward RTM to**:
+   - Detect orphan tests/code that should be cleaned up
+   - Verify connection chains across tracks
 
 ### When to Skip Scout
 
-- Task scope is a single file (< 100 lines)
-- Correction round (file:line already known from rejection codes)
-- Trivial change where scout cost exceeds implementation cost
+- RTM already exists and track files haven't changed (incremental mode)
+- Correction round (Forward RTM rows already identified by auditor rejection)
+- Single-file trivial change
 
 ## Task Distribution
 
