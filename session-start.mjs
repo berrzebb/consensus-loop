@@ -11,18 +11,26 @@ import { syncHandoffFromMemory } from "./handoff-writer.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Resolve repo root: legacy layout (3 levels up) or git rev-parse fallback
+// cwd-based git resolution (worktree-aware) — legacy layout as fallback
 function resolveRepoRoot() {
+  try {
+    return execSync("git rev-parse --show-toplevel", { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch { /* git unavailable */ }
   const legacy = resolve(__dirname, "..", "..", "..");
   if (existsSync(resolve(legacy, ".git"))) return legacy;
-  try {
-    return execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-  } catch { return process.cwd(); }
+  return process.cwd();
 }
 const REPO_ROOT = resolveRepoRoot();
 
-// Read config for dynamic paths
-const configPath = resolve(__dirname, "config.json");
+// Read config — prefer CLAUDE_PLUGIN_ROOT (set by hooks.json), fallback to __dirname
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+const configPath = (() => {
+  if (pluginRoot) {
+    const p = resolve(pluginRoot, "config.json");
+    if (existsSync(p)) return p;
+  }
+  return resolve(__dirname, "config.json");
+})();
 const cfg = existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) : {};
 const watchFile = cfg.consensus?.watch_file ?? "docs/feedback/claude.md";
 const respondFile = cfg.plugin?.respond_file ?? "gpt.md";

@@ -15,6 +15,10 @@ codex-session.log
 hook-debug.log
 .session-state/
 
+# Claude Code local artifacts
+.claude/settings.local.json
+.claude/worktrees/
+
 # Build artifacts
 *.zip
 

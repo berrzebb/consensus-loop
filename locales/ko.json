@@ -28,6 +28,7 @@
   "audit.debug_bin": "Codex 실행 파일 경로: {bin}",
   "audit.updated": "\n업데이트됨: {path}",
   "audit.session.reset": "{tag} 항목이 없습니다 — 다음 감사를 위해 세션을 초기화했습니다.",
+  "audit.session.reset_pending": "[계류] 항목 감지 — orphan call 방지를 위해 세션을 새로 시작합니다.",
   "audit.session.saved": "감사 세션 저장: {id}",
 
   "respond.gpt_not_found": "gpt.md를 찾을 수 없음 — 응답할 내용이 없습니다.",

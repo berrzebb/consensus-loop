@@ -17,7 +17,7 @@
  *   4. Fallback: multi-segment scan
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -133,6 +133,19 @@ export function syncHandoffToMemory(repoRoot, handoffRelPath, opts = {}) {
     return { success: false, error: "memory_dir_not_found" };
   }
 
+  const memoryFile = resolve(memoryDir, "session_handoff.md");
+
+  // "Newer wins" — 세션 중 메모리를 직접 수정했다면 repo 버전으로 덮어쓰지 않음
+  if (existsSync(memoryFile)) {
+    try {
+      const repoMtime = statSync(repoHandoff).mtimeMs;
+      const memMtime  = statSync(memoryFile).mtimeMs;
+      if (memMtime > repoMtime) {
+        return { success: true, memoryDir, skipped: "memory_is_newer" };
+      }
+    } catch { /* stat 실패 시 기존 동작 유지 */ }
+  }
+
   const content = readFileSync(repoHandoff, "utf8");
 
   // Write as memory-format file with frontmatter (locale-aware)
@@ -140,7 +153,6 @@ export function syncHandoffToMemory(repoRoot, handoffRelPath, opts = {}) {
     ? content  // Already has frontmatter
     : buildFrontmatter(opts.locale ?? "en") + content;
 
-  const memoryFile = resolve(memoryDir, "session_handoff.md");
   if (!existsSync(memoryDir)) mkdirSync(memoryDir, { recursive: true });
   writeFileSync(memoryFile, memoryContent, "utf8");
 

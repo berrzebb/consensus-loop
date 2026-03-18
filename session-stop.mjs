@@ -11,19 +11,27 @@ import { syncHandoffToMemory } from "./handoff-writer.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// cwd-based git resolution (worktree-aware) — legacy layout as fallback
 function resolveRepoRoot() {
-  const legacy = resolve(__dirname, "..", "..", "..");
-  if (existsSync(resolve(legacy, ".git"))) return legacy;
   try {
-    const r = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const r = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
     if (r.status === 0) return r.stdout.trim();
   } catch { /* git unavailable */ }
+  const legacy = resolve(__dirname, "..", "..", "..");
+  if (existsSync(resolve(legacy, ".git"))) return legacy;
   return process.cwd();
 }
 const REPO_ROOT = resolveRepoRoot();
 
-// Read config for dynamic paths
-const configPath = resolve(__dirname, "config.json");
+// Read config — prefer CLAUDE_PLUGIN_ROOT (set by hooks.json), fallback to __dirname
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+const configPath = (() => {
+  if (pluginRoot) {
+    const p = resolve(pluginRoot, "config.json");
+    if (existsSync(p)) return p;
+  }
+  return resolve(__dirname, "config.json");
+})();
 const cfg = existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) : {};
 const handoffFile = cfg.plugin?.handoff_file ?? ".claude/session-handoff.md";
 
@@ -56,8 +64,8 @@ if (existsSync(resolve(clDir, ".git"))) {
 }
 
 // 3. Main repo: stage session artifacts only
+// handoffFile은 메모리 동기화(handoff-writer)로 관리 — git 커밋 불필요
 const artifacts = [
-  handoffFile,
   ".claude/CLAUDE.md",
 ];
 

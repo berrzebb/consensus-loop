@@ -17,17 +17,17 @@ export const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 /**
  * Resolve the repository root directory.
  *
- * Legacy layout:  .claude/hooks/consensus-loop/  → 3 levels up
- * Plugin layout:  installed anywhere              → git rev-parse
+ * Worktree-aware: cwd-based git resolution runs first so that
+ * subagents running inside a git worktree see the worktree root,
+ * not the main repo root.
+ *
+ * Legacy layout:  .claude/hooks/consensus-loop/  → 3 levels up (fallback)
+ * Plugin layout:  installed anywhere              → git rev-parse (primary)
  *
  * Falls back to process.cwd() when git is unavailable.
  */
 function resolveRepoRoot() {
-  // 1. Legacy layout: .claude/hooks/consensus-loop/
-  const legacyRoot = resolve(HOOKS_DIR, "..", "..", "..");
-  if (existsSync(resolve(legacyRoot, ".git"))) return legacyRoot;
-
-  // 2. Plugin layout: use git to find repo root
+  // 1. cwd-based git resolution — worktree-aware (primary)
   try {
     return execFileSync("git", ["rev-parse", "--show-toplevel"], {
       cwd: process.cwd(),
@@ -36,14 +36,38 @@ function resolveRepoRoot() {
     }).trim();
   } catch { /* git not available or not in a repo */ }
 
-  // 3. Fallback
+  // 2. Legacy layout fallback: .claude/hooks/consensus-loop/ → 3 levels up
+  const legacyRoot = resolve(HOOKS_DIR, "..", "..", "..");
+  if (existsSync(resolve(legacyRoot, ".git"))) return legacyRoot;
+
+  // 3. Last resort
   return process.cwd();
 }
 
 export const REPO_ROOT = resolveRepoRoot();
 
 // ── Config ────────────────────────────────────────────────
-export const cfg = JSON.parse(readFileSync(resolve(HOOKS_DIR, "config.json"), "utf8"));
+
+/**
+ * Find config.json path.
+ *
+ * Priority:
+ *   1. $CLAUDE_PLUGIN_ROOT/config.json — set by hooks.json; always the canonical plugin dir
+ *   2. HOOKS_DIR/config.json            — fallback for direct CLI invocation
+ *
+ * This ensures worktree copies (which lack config.json) can still load config
+ * when hooks.json has set CLAUDE_PLUGIN_ROOT to the main plugin location.
+ */
+function findConfigPath() {
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  if (pluginRoot) {
+    const p = resolve(pluginRoot, "config.json");
+    if (existsSync(p)) return p;
+  }
+  return resolve(HOOKS_DIR, "config.json");
+}
+
+export const cfg = JSON.parse(readFileSync(findConfigPath(), "utf8"));
 export const plugin = cfg.plugin;
 export const consensus = cfg.consensus;
 
@@ -123,10 +147,20 @@ export function resetPathCache() {
 // ── i18n (cached) ─────────────────────────────────────────
 const localeCache = new Map();
 
+/** Resolve locales directory — prefer CLAUDE_PLUGIN_ROOT so worktree copies can find locale files. */
+function findLocalesDir() {
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  if (pluginRoot) {
+    const p = resolve(pluginRoot, "locales");
+    if (existsSync(p)) return p;
+  }
+  return resolve(HOOKS_DIR, "locales");
+}
+
 export function createT(locale) {
   if (localeCache.has(locale)) return localeCache.get(locale);
 
-  const localePath = resolve(HOOKS_DIR, "locales", `${locale}.json`);
+  const localePath = resolve(findLocalesDir(), `${locale}.json`);
   let messages = {};
   try { messages = JSON.parse(readFileSync(localePath, "utf8")); } catch { /* fallback */ }
 

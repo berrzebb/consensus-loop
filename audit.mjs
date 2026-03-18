@@ -323,6 +323,17 @@ function determineResumeTarget(args) {
 
   const saved = readSavedSession();
   if (saved) {
+    // gpt.md에 [계류] 항목이 있으면 세션 리셋 — 재개 시 orphan call 누적 방지
+    if (existsSync(gptPath)) {
+      try {
+        const gptMd = readFileSync(gptPath, "utf8");
+        if (hasPendingItems(gptMd)) {
+          deleteSavedSessionId();
+          console.log(t("audit.session.reset_pending"));
+          return null;
+        }
+      } catch { /* 파일 읽기 실패 시 기존 세션 유지 */ }
+    }
     return { type: "session", value: saved };
   }
 

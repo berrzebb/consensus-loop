@@ -28,6 +28,7 @@
   "audit.debug_bin": "Resolved Codex executable: {bin}",
   "audit.updated": "\nUpdated: {path}",
   "audit.session.reset": "No remaining {tag} items — session reset for next audit.",
+  "audit.session.reset_pending": "Pending items detected — resetting session to prevent orphan call accumulation.",
   "audit.session.saved": "Saved audit session: {id}",
 
   "respond.gpt_not_found": "gpt.md not found — nothing to respond to.",
