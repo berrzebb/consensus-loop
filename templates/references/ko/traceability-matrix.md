@@ -47,6 +47,7 @@
 | **Test Case** | 스카우트 → 구현자 | 테스트 파일:라인, `self`=자기 자신이 테스트, — 부재 |
 | **Test Result** | 구현자 | ✓ pass / ✗ fail / — pending |
 | **Connected** | 스카우트 | 하류 소비자 `Req ID:file` (import 추적) |
+| **Coverage** | coverage_map 도구 | vitest 커버리지 JSON에서 stmt% / br% / fn% |
 | **Status** | 전체 | open → wip → fixed → verified |
 
 ---

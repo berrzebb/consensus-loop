@@ -259,6 +259,48 @@ function toolAuditScan(params) {
   }
 }
 
+// ═══ Tool: coverage_map ═════════════════════════════════════════════════
+
+function loadCoverageSummary(coverageDir) {
+  const summaryPath = resolve(coverageDir, "coverage-summary.json");
+  if (!existsSync(summaryPath)) return null;
+  const raw = JSON.parse(readFileSync(summaryPath, "utf8"));
+  const result = new Map();
+  for (const [filePath, data] of Object.entries(raw)) {
+    if (filePath === "total") continue;
+    result.set(filePath.replace(/\\/g, "/"), {
+      statements: data.statements?.pct ?? 0,
+      branches: data.branches?.pct ?? 0,
+      functions: data.functions?.pct ?? 0,
+      lines: data.lines?.pct ?? 0,
+    });
+  }
+  return result;
+}
+
+function toolCoverageMap(params) {
+  const { path: targetPath, coverage_dir: covDir = "coverage" } = params;
+  const cwd = process.cwd();
+  const coverageMap = loadCoverageSummary(resolve(cwd, covDir));
+  if (!coverageMap) return { error: `No coverage data at ${resolve(cwd, covDir, "coverage-summary.json")}. Run: npm run test:coverage` };
+
+  // If a specific path is given, filter to files under that path
+  const filter = targetPath ? targetPath.replace(/\\/g, "/") : null;
+  const rows = [];
+  rows.push("| File | Statements | Branches | Functions | Lines |");
+  rows.push("|------|-----------|----------|-----------|-------|");
+
+  let count = 0;
+  for (const [filePath, data] of [...coverageMap.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const rel = relative(cwd, filePath).replace(/\\/g, "/");
+    if (filter && !rel.includes(filter) && !filePath.includes(filter)) continue;
+    rows.push(`| ${rel} | ${data.statements}% | ${data.branches}% | ${data.functions}% | ${data.lines}% |`);
+    count++;
+  }
+
+  return { text: rows.join("\n"), summary: `${count} files` };
+}
+
 // ═══ MCP Protocol ═══════════════════════════════════════════════════════
 
 const SERVER_INFO = { name: "consensus-loop", version: "2.2.0" };
@@ -287,6 +329,17 @@ const TOOLS = [
       properties: {
         pattern: { type: "string", description: "Scan pattern: all, type-safety, hardcoded, console" },
         path:    { type: "string", description: "Target path to scan" },
+      },
+    },
+  },
+  {
+    name: "coverage_map",
+    description: "Map test coverage data to files. Returns per-file statement/branch/function/line percentages from vitest coverage JSON. Use after running `npm run test:coverage` to fill RTM Coverage columns.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path:         { type: "string", description: "Filter to files under this path (e.g., src/evals/)" },
+        coverage_dir: { type: "string", description: "Coverage output directory (default: coverage/)" },
       },
     },
   },
@@ -322,6 +375,14 @@ function handleRequest(req) {
           return { content: [{ type: "text", text: result.stdout || result.error }], isError: true };
         }
         return { content: [{ type: "text", text: result.text }] };
+      }
+
+      if (name === "coverage_map") {
+        const result = toolCoverageMap(args || {});
+        if (result.error) {
+          return { content: [{ type: "text", text: result.error }], isError: true };
+        }
+        return { content: [{ type: "text", text: `${result.text}\n\n(${result.summary})` }] };
       }
 
       return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };

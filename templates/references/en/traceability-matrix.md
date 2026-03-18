@@ -47,6 +47,7 @@ Detects: **implementation gaps, missing tests, unconnected outputs**
 | **Test Case** | scout → implementer | Test file:line, `self` if row IS a test, — if absent |
 | **Test Result** | implementer | ✓ pass / ✗ fail / — pending |
 | **Connected** | scout | Downstream consumer `Req ID:file` via import tracing |
+| **Coverage** | coverage_map tool | stmt% / br% / fn% from vitest coverage JSON |
 | **Status** | all | open → wip → fixed → verified |
 
 ---
