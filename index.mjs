@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync, spawn, execFileSync } from "node:child_process";
 import {
   HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus as c,
-  findWatchFile, findRespondFile, t, isHookEnabled,
+  findWatchFile, findRespondFile, t, isHookEnabled, configMissing,
 } from "./context.mjs";
 
 const debugLog = resolve(HOOKS_DIR, plugin.debug_log);
@@ -272,6 +272,10 @@ function is_planning_file(normalized) {
 
 async function main() {
   log("Hook triggered");
+  if (configMissing) {
+    process.stdout.write("[consensus-loop] config.json not found. Run a new session to trigger auto-setup, or see README.md for manual configuration.");
+    return;
+  }
   if (process.env.FEEDBACK_LOOP_ACTIVE === "1") { log("EXIT: reentrant"); return; }
 
   const chunks = [];

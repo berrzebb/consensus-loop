@@ -64,12 +64,32 @@ function findConfigPath() {
     const p = resolve(pluginRoot, "config.json");
     if (existsSync(p)) return p;
   }
-  return resolve(HOOKS_DIR, "config.json");
+  const local = resolve(HOOKS_DIR, "config.json");
+  if (existsSync(local)) return local;
+  return null;
 }
 
-export const cfg = JSON.parse(readFileSync(findConfigPath(), "utf8"));
-export const plugin = cfg.plugin;
-export const consensus = cfg.consensus;
+const _configPath = findConfigPath();
+
+/** config.json이 존재하지 않으면 true. 훅에서 설정 안내를 출력할 때 사용. */
+export const configMissing = _configPath === null;
+
+/** config.json 미존재 시 훅이 crash하지 않도록 최소 기본값 제공. */
+const DEFAULT_CONFIG = {
+  plugin: { locale: "en", hooks_enabled: {} },
+  consensus: {
+    watch_file: "docs/feedback/claude.md",
+    trigger_tag: "[REVIEW_NEEDED]",
+    agree_tag: "[APPROVED]",
+    pending_tag: "[CHANGES_REQUESTED]",
+  },
+};
+
+export const cfg = _configPath
+  ? JSON.parse(readFileSync(_configPath, "utf8"))
+  : DEFAULT_CONFIG;
+export const plugin = cfg.plugin ?? DEFAULT_CONFIG.plugin;
+export const consensus = cfg.consensus ?? DEFAULT_CONFIG.consensus;
 
 // ── Hook toggles ─────────────────────────────────────────
 const _hooksEnabled = plugin.hooks_enabled ?? {};

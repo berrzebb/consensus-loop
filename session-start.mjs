@@ -4,7 +4,7 @@
  * Loads handoff + recent changes + audit state as context for new sessions.
  * Detects interrupted audit cycles and orchestrator tracks → provides resume instructions.
  */
-import { readFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, existsSync, rmSync, cpSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -22,15 +22,74 @@ function resolveRepoRoot() {
 }
 const REPO_ROOT = resolveRepoRoot();
 
-const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? __dirname;
 const configPath = (() => {
-  if (pluginRoot) {
-    const p = resolve(pluginRoot, "config.json");
+  const pr = process.env.CLAUDE_PLUGIN_ROOT;
+  if (pr) {
+    const p = resolve(pr, "config.json");
     if (existsSync(p)) return p;
   }
-  return resolve(__dirname, "config.json");
+  const local = resolve(__dirname, "config.json");
+  return existsSync(local) ? local : null;
 })();
-const cfg = existsSync(configPath) ? JSON.parse(readFileSync(configPath, "utf8")) : {};
+
+// ── config.json 미존재 → examples에서 자동 복사 + 커스터마이즈 안내 ──
+if (!configPath) {
+  const exampleConfig = resolve(pluginRoot, "examples", "config.example.json");
+  const configDest = resolve(pluginRoot, "config.json");
+  const exampleTemplates = resolve(pluginRoot, "examples", "templates");
+  const templatesDest = resolve(pluginRoot, "templates");
+
+  const autoCopied = [];
+
+  // config.json 자동 복사
+  if (existsSync(exampleConfig)) {
+    try {
+      cpSync(exampleConfig, configDest);
+      autoCopied.push("config.json");
+    } catch { /* write permission error */ }
+  }
+
+  // templates/ 자동 복사 (references 정책 파일 포함)
+  if (!existsSync(templatesDest) && existsSync(exampleTemplates)) {
+    try {
+      cpSync(exampleTemplates, templatesDest, { recursive: true });
+      autoCopied.push("templates/");
+    } catch { /* write permission error */ }
+  }
+
+  if (autoCopied.length > 0) {
+    const guide = [
+      `[consensus-loop — First-Run Setup Complete]`,
+      ``,
+      `Auto-copied: ${autoCopied.join(", ")}`,
+      `Location: ${pluginRoot}`,
+      ``,
+      `Customize for your project:`,
+      `- config.json → consensus.watch_file, trigger_tag/agree_tag/pending_tag, quality_rules`,
+      `- templates/references/{locale}/ → audit policies (rejection codes, test criteria, evidence format)`,
+      ``,
+      `Full guide: ${resolve(pluginRoot, "README.md")}`,
+    ].join("\n");
+    const escaped = JSON.stringify(guide);
+    process.stdout.write(`{"additionalContext": ${escaped}}`);
+    process.exit(0);
+  }
+
+  // examples/ directory missing (broken install) — manual guidance
+  const guide = [
+    `[SETUP REQUIRED — consensus-loop]`,
+    ``,
+    `config.json not found and examples/ directory is missing.`,
+    `Reinstall the plugin: claude plugin add berrzebb/consensus-loop`,
+    `Or manually create config.json. See: https://github.com/berrzebb/consensus-loop`,
+  ].join("\n");
+  const escaped = JSON.stringify(guide);
+  process.stdout.write(`{"additionalContext": ${escaped}}`);
+  process.exit(0);
+}
+
+const cfg = JSON.parse(readFileSync(configPath, "utf8"));
 const watchFile = cfg.consensus?.watch_file ?? "docs/feedback/claude.md";
 const respondFile = cfg.plugin?.respond_file ?? "gpt.md";
 const triggerTag = cfg.consensus?.trigger_tag ?? "[GPT미검증]";
