@@ -96,16 +96,68 @@ Issue multiple Agent tool calls in a single message:
 - Record each `agentId` in handoff on return
 - Maximum 3 concurrent agents (rate limit prevention)
 
-## Task Distribution (Single Track)
+## Scout Phase (scope confirmation)
 
-Single task distribution:
+When the orchestrator receives tasks, it **dispatches a scout first** to confirm the actual scope.
+The scout produces a modification blueprint (matrix) that all downstream agents share, eliminating redundant exploration.
+
+### Flow
+
+```
+Orchestrator reviews tasks
+    ↓
+code_map (0 tokens) → matrix overview
+    ↓
+Scout agent (1× read-only) → modification blueprint
+    ↓
+Blueprint shared with ALL implementers → zero exploration
+```
+
+### Procedure
+
+1. **Generate code map matrix** for each task's target scope:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/code-map.mjs" <target-dir> --ranges --filter fn,class,iface
+   ```
+   Or use MCP tool `code_map(path, filter, format="matrix")` if available (cached, faster).
+
+2. **Spawn scout agent** — read-only, deep analysis:
+   ```json
+   {
+     "prompt": "[task descriptions + code map matrix]",
+     "subagent_type": "scout",
+     "description": "scout scope confirmation"
+   }
+   ```
+   The scout uses Sonnet for thorough analysis — shallow scanning defeats the purpose.
+   Scout agent definition: `agents/scout.md`
+
+3. **Receive blueprint** — the scout confirms the actual work scope:
+   - Target table: `| File | Lines | Symbol | Action |`
+   - Context per target: current state + needed change
+   - Scope boundaries: what IS and IS NOT in scope
+   - Cross-task dependencies: which targets are shared between tasks
+
+4. **Orchestrator uses blueprint to**:
+   - Finalize task assignments (split/merge tasks if scope differs from initial plan)
+   - Validate non-overlapping scopes for parallel distribution
+   - Compose each implementer's prompt with the relevant subset of the blueprint
+
+### When to Skip Scout
+
+- Task scope is a single file (< 100 lines)
+- Correction round (file:line already known from rejection codes)
+- Trivial change where scout cost exceeds implementation cost
+
+## Task Distribution
+
+After scout phase (or skipping it):
 
 1. Extract from handoff: task ID, status, depends_on, blocks, background
 2. Gather required context files:
-   - Design docs from `consensus.planning_dirs` in config
    - Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
    - Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
-3. Compose worker prompt with task context
+3. Compose worker prompt with: task context + **scout blueprint** (if available)
 4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "consensus-loop:implementer"`
 5. **Record agent info**: `agentId`, `worktreePath`, `worktreeBranch` → handoff
 6. Update handoff status: `not-started` → `in-progress`

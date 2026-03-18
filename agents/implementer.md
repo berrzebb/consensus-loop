@@ -38,14 +38,16 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 
 - Task ID + title
 - Handoff section (background, depends_on, what to do)
+- **Scout blueprint** (if available): pre-computed modification targets with file:line ranges, current state, and needed changes. When a blueprint is provided, **skip exploration** — go directly to implementation using the exact targets listed.
 - Specific rejection codes and correction instructions (if re-submission)
 
 ## Execution Flow
 
 ### 1. Understand
 
-- Read the provided context completely
-- Identify: what files to change, what tests to write, what criteria to meet
+- If a **scout blueprint** is provided: use its target table directly — do NOT re-explore
+- If no blueprint: read the provided context and identify targets yourself
+- In both cases: verify what files to change, what tests to write, what criteria to meet
 
 ### 2. Implement
 
