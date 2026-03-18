@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global process, console */
 /**
  * CL-1 direct verification:
  *   1. singleRe  — H1-H6 excluded, H7+ and other single-char IDs collected
@@ -12,21 +11,7 @@ import { strict as assert } from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-
-let passed = 0;
-let failed = 0;
-
-function test(name, fn) {
-  try {
-    fn();
-    console.log(`  ✓ ${name}`);
-    passed++;
-  } catch (err) {
-    console.error(`  ✗ ${name}`);
-    console.error(`    ${err.message}`);
-    failed++;
-  }
-}
+import { test, stats } from "./_helpers.mjs";
 
 // ─── 1. singleRe H1-H6 exclusion ────────────────────────────────────────────
 // Mirrors the collectIdsFromLine() singleRe block in respond.mjs (L512-L518).
@@ -131,5 +116,5 @@ try {
 }
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
-console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);
-if (failed > 0) process.exit(1);
+console.log(`\n${stats.passed + stats.failed} tests: ${stats.passed} passed, ${stats.failed} failed`);
+if (stats.failed > 0) process.exit(1);
