@@ -1,7 +1,7 @@
 ---
 name: consensus-loop:verify
-description: "Run all done-criteria checks (CQ/T/CC/CL/S/I/FV) and produce a pass/fail verification report. Use after implementing code, before submitting evidence to the consensus-loop audit."
-argument-hint: "[optional: specific category - CQ, T, CC, CL, S, I, FV]"
+description: "Run all done-criteria checks (CQ/T/CC/CL/S/I/FV/CV) and produce a pass/fail verification report. Use after implementing code, before submitting evidence to the consensus-loop audit."
+argument-hint: "[optional: specific category - CQ, T, CC, CL, S, I, FV, CV]"
 model: claude-sonnet-4-6
 allowed-tools: Read, Grep, Glob, Bash(npx *), Bash(node *), Bash(git diff *), Bash(git status *), Bash(cat *), Bash(ls *)
 ---
@@ -21,6 +21,7 @@ Runs all done-criteria checks before evidence submission. Criteria loaded from `
 | 5 | Security (S) | Input validation, auth guards, audit-scan hardcoded | Grep, Read |
 | 6 | i18n (I) | Locale keys in ALL locale files | Grep |
 | 7 | Frontend (FV) | Page loads, DOM elements, console errors, build | Browser (if FE files changed) |
+| 8 | Coverage (CV) | stmt ≥ 85%, branch ≥ 75% per changed file | MCP coverage_map or Bash |
 
 ## Workflow
 
@@ -94,6 +95,25 @@ Only runs if changed files include frontend paths (e.g., `web/`, `src/dashboard/
 
 Check: page loads, elements exist in DOM, no console errors, build succeeds.
 
+### Step 8.5: Coverage Verification (CV)
+
+Requires `npm run test:coverage` to have been run (produces `coverage/coverage-summary.json`).
+
+```bash
+# Option A: MCP tool (if available)
+# coverage_map tool with path filter
+
+# Option B: CLI script
+node ${CLAUDE_PLUGIN_ROOT}/scripts/coverage-mapper.mjs <rtm-file> --coverage-dir coverage/
+```
+
+For each changed **source** file (exclude test files):
+- CV-1: `statements.pct` ≥ 85%
+- CV-2: `branches.pct` ≥ 75%
+- CV-3: File present in coverage-summary.json (coverage data exists)
+
+Record: PASS or FAIL with file + actual% vs threshold.
+
 ### Step 9: Integrated Report
 
 ```markdown
@@ -108,8 +128,9 @@ Check: page loads, elements exist in DOM, no console errors, build succeeds.
 | 5 | Security (S) | PASS / X issues | ... |
 | 6 | i18n (I) | PASS / X issues | ... |
 | 7 | Frontend (FV) | PASS / SKIP | ... |
+| 8 | Coverage (CV) | PASS / X issues | ... |
 
-**Total: X/7 passed, Y issues found**
+**Total: X/8 passed, Y issues found**
 ```
 
 If all pass → "Ready for evidence submission."

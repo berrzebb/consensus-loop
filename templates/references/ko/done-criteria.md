@@ -64,6 +64,14 @@ Submit evidence only when ALL items pass.
 | I-1 | User-facing strings → locale keys (not hardcoded) | Locale file reference |
 | I-2 | New locale keys → present in ALL supported locales | ko.json + en.json both contain key |
 
+### Coverage
+
+| # | Criterion | Proof |
+|---|-----------|-------|
+| CV-1 | Every changed source file has statement coverage ≥ 85% | `coverage-summary.json` per-file `statements.pct` |
+| CV-2 | Every changed source file has branch coverage ≥ 75% | `coverage-summary.json` per-file `branches.pct` |
+| CV-3 | Coverage data exists (tests were run with `--coverage`) | `coverage/coverage-summary.json` file exists |
+
 ---
 
 ## Not-Done Criteria (auditor rejection codes)

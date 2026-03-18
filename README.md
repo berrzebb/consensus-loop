@@ -1,4 +1,4 @@
-# consensus-loop v2.1.0
+# consensus-loop v2.3.0
 
 > **Claude Code hook plugin** — tag-based two-party consensus protocol between Claude (implementer) and an external AI auditor (GPT/Codex), with HITL retrospective gates and multi-agent orchestration.
 
@@ -41,6 +41,10 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **PreCompact snapshot** | Saves audit state (retro-marker, audit.lock, last item) before context compaction |
 | **Resume detection** | SessionStart auto-detects 7 interrupted states → provides specific resume instructions |
 | **Context reinforcement** | SessionStart re-injects AI-GUIDE "absolute rules" via `<CONTEXT-REINFORCEMENT>` tag |
+| **Scout agent** | Read-only RTM generator — produces 3-way traceability matrix (Forward/Backward/Bidirectional) using deterministic tools |
+| **MCP tools** | 4 deterministic tools via `scripts/mcp-server.mjs`: `code_map`, `dependency_graph`, `audit_scan`, `coverage_map` |
+| **RTM (traceability)** | Requirements Traceability Matrix — scout generates, implementer updates, auditor verifies, orchestrator closes |
+| **Coverage verification** | CV-1~CV-3 done-criteria: stmt ≥ 85%, branch ≥ 75%, coverage data exists. `coverage-gap` rejection code |
 
 ---
 
@@ -64,7 +68,8 @@ consensus-loop/
 │   └── consensus-loop/    ← consensus-loop:guide — evidence package guide
 │
 ├── agents/
-│   └── implementer.md     ← Implementer agent persona
+│   ├── implementer.md     ← Implementer agent persona (worktree isolation)
+│   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
 │
 ├── commands/              ← CLI commands (auto-discovered)
 │   ├── consensus-audit.md ← /consensus-audit — trigger manual audit
@@ -78,6 +83,13 @@ consensus-loop/
 │   └── ko/
 │       ├── AI-GUIDE.md    ← AI agent usage guide (Korean)
 │       └── README.md      ← Plugin reference (Korean)
+│
+├── scripts/               ← Deterministic tools + MCP server
+│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
+│   ├── code-map.mjs       ← Standalone symbol index generator
+│   ├── audit-scan.mjs     ← Pattern scanner (type-safety, hardcoded, console)
+│   ├── coverage-mapper.mjs← Coverage JSON → RTM integration (CLI)
+│   └── add-locale-key.mjs ← Locale key addition helper
 │
 ├── context.mjs            ← Shared module: config, paths, parsers, i18n cache, safeLocale
 ├── index.mjs              ← PostToolUse hook entry point
@@ -103,7 +115,7 @@ consensus-loop/
 │   ├── fix-prompt.md      ← Facade → references fix-rules, evidence-format
 │   ├── retro-prompt.md    ← Facade → references retro-questions, memory-cleanup
 │   └── references/
-│       ├── ko/            ← Korean policy files (team-editable, 9 files)
+│       ├── ko/            ← Korean policy files (team-editable, 10 files)
 │       │   ├── rejection-codes.md
 │       │   ├── test-checklist.md
 │       │   ├── output-format.md
@@ -112,8 +124,9 @@ consensus-loop/
 │       │   ├── memory-cleanup.md
 │       │   ├── principles.md
 │       │   ├── retro-questions.md
-│       │   └── fix-rules.md
-│       └── en/            ← English equivalents (same 9 files)
+│       │   ├── fix-rules.md
+│       │   └── traceability-matrix.md
+│       └── en/            ← English equivalents (same 10 files)
 │
 ├── tests/
 ├── plans/                 ← Work planning docs (ko/en)
@@ -149,8 +162,10 @@ consensus-loop/
 ```
 consensus-loop:planner ─── Track definition + execution plan adjustment
     ↓
-consensus-loop:orchestrator ─── Select WBs → scope validation → parallel distribute
-    ↓                                        (non-overlapping files only)
+scout agent ─── dependency_graph + code_map → 3-way RTM (Forward/Backward/Bidirectional)
+    ↓
+consensus-loop:orchestrator ─── Distribute Forward RTM rows → scope validation → parallel spawn
+    ↓                                                          (non-overlapping files only)
 ┌─── Track A (worktree) ──────┐  ┌─── Track B (worktree) ──────┐
 │  implementer: implement      │  │  implementer: implement      │
 │  → consensus-loop:verify     │  │  → consensus-loop:verify     │
@@ -250,8 +265,8 @@ audit-prompt.md (30 lines)
 Add the marketplace, then install the plugin:
 
 ```bash
-claude marketplace add berrzebb/berrzebb-plugins
-claude plugin add consensus-loop@berrzebb-plugins
+claude plugin marketplace add berrzebb/claude-plugins
+claude plugin install consensus-loop@berrzebb-plugins
 ```
 
 This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and makes skills available as slash commands.
@@ -426,7 +441,7 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
 
 ## Porting to Another Project
 
-1. `claude marketplace add berrzebb/berrzebb-plugins && claude plugin add consensus-loop@berrzebb-plugins` (or copy into `.claude/hooks/`)
+1. `claude plugin marketplace add berrzebb/claude-plugins && claude plugin install consensus-loop@berrzebb-plugins` (or copy into `.claude/hooks/`)
 2. Edit `config.json` — set tags, paths, quality rules
 3. Edit `templates/references/{locale}/` — set team policies
 4. (Manual only) Register hooks in `.claude/settings.local.json`

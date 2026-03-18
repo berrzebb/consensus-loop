@@ -13,6 +13,7 @@
 | `claim-drift` | 문서와 코드 동작 불일치 | `[major]`: 동작 차이 / `[minor]`: 문서 오타 |
 | `principle-drift` | SOLID/YAGNI/DRY/KISS/LoD 구조 회귀 | `[major]`: 구조적 회귀 / `[minor]`: 경미한 위반 |
 | `security-drift` | OWASP TOP 10 위반 또는 공격자 관점 취약점 | `[major]`: 항상 |
+| `coverage-gap` | 변경 파일 커버리지 threshold 미달 | `[major]`: stmt < 85% 또는 branch < 75% / `[minor]`: threshold 5% 이내 |
 
 ## 사용 규칙
 

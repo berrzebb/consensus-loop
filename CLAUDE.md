@@ -1,6 +1,6 @@
 # consensus-loop
 
-Claude Code hook plugin — tag-based consensus protocol with GPT/Codex audit. Every code edit triggers automatic audit → consensus → retrospective → commit cycle.
+Claude Code hook plugin — tag-based consensus protocol with GPT/Codex audit. Every code edit triggers automatic audit → consensus → retrospective → commit cycle. Includes scout-driven RTM generation and deterministic MCP tools.
 
 ## Quick Commands
 
@@ -13,7 +13,7 @@ node --test tests/cl1-verify.test.mjs  # single file
 FEEDBACK_HOOK_DRY_RUN=1 node index.mjs
 
 # Clear plugin cache (after modifying source files)
-rm -rf ~/.claude/plugins/cache/consensus-loop
+rm -rf ~/.claude/plugins/cache/berrzebb-plugins
 ```
 
 ## Core Module Map
@@ -26,14 +26,52 @@ index.mjs          ← PostToolUse entry: watch_file detection → audit trigger
   └→ retrospective.mjs ← Post-consensus retro marker setup
 
 session-gate.mjs   ← PreToolUse: blocks Bash/Agent until retrospective completes
-session-start.mjs  ← SessionStart: handoff sync + context injection
+session-start.mjs  ← SessionStart: handoff sync + context injection + resume detection
 session-stop.mjs   ← Stop: handoff sync + auto-commit
 subagent-stop.mjs  ← SubagentStop: worker completion detection + deferred retro
+pre-compact.mjs    ← PreCompact: saves audit state before context compaction
 
 cli-runner.mjs     ← Cross-platform binary resolver (codex/claude)
 handoff-writer.mjs ← Bidirectional repo ↔ Claude memory handoff sync
 i18n.mjs           ← Standalone locale helper (for non-context.mjs imports)
 ```
+
+## Agents
+
+```
+agents/
+  ├→ implementer.md  ← Headless worker: code, test, evidence, WIP commit (worktree isolation)
+  └→ scout.md        ← Read-only RTM generator: 3-way traceability matrix (Opus)
+```
+
+## Scripts & MCP Tools
+
+```
+scripts/
+  ├→ mcp-server.mjs      ← MCP server exposing 4 deterministic tools (JSON-RPC 2.0 over stdio)
+  ├→ code-map.mjs         ← Standalone symbol index generator
+  ├→ audit-scan.mjs       ← Pattern scanner (type-safety, hardcoded, console)
+  ├→ coverage-mapper.mjs  ← Coverage JSON → RTM integration (CLI)
+  └→ add-locale-key.mjs   ← Add locale key to ko + en at once
+```
+
+### MCP Tools (via mcp-server.mjs)
+
+| Tool | Purpose | Cached | Used By |
+|------|---------|--------|---------|
+| `code_map` | Symbol index (fn/class/type/import) with line ranges | Yes (mtime) | Scout, Implementer, Planner |
+| `dependency_graph` | Import/export DAG, connected components, topological sort, cycle detection | Yes (mtime) | Scout, Orchestrator, Planner |
+| `audit_scan` | Pattern scan (type-safety, hardcoded, console) | No | Implementer, Verify |
+| `coverage_map` | Per-file coverage percentages from vitest JSON | No | Verify, Implementer |
+
+## RTM (Requirements Traceability Matrix)
+
+Scout agent generates 3 matrices per track:
+- **Forward**: Requirement → Code → Test (gap detection)
+- **Backward**: Test → Code → Requirement (orphan detection)
+- **Bidirectional**: Cross-reference summary (coverage analysis)
+
+Format: `templates/references/{locale}/traceability-matrix.md`
 
 ## config.json
 
@@ -41,7 +79,7 @@ Location: `consensus-loop/config.json` (gitignored, project-specific)
 
 Key fields:
 - `plugin.locale` — `"ko"` or `"en"` (invalid values fall back to `"en"`)
-- `consensus.watch_file` — evidence file path (relative to repo root, e.g., `docs/feedback/claude.md`)
+- `consensus.watch_file` — evidence file path (relative to repo root)
 - `consensus.trigger_tag` / `agree_tag` / `pending_tag` — state transition tags
 - `quality_rules[]` — auto-run quality checks on file edit (ESLint, tsc, etc.)
 
@@ -55,10 +93,10 @@ Disable individual hooks via `plugin.hooks_enabled` (all default to `true`):
 {
   "plugin": {
     "hooks_enabled": {
-      "audit": true,          // Audit trigger (PostToolUse)
-      "session_gate": true,   // Retro enforcement gate (PreToolUse)
-      "quality_rules": true,  // Per-file quality checks (PostToolUse)
-      "pre_compact": true     // State snapshot before compaction (PreCompact)
+      "audit": true,
+      "session_gate": true,
+      "quality_rules": true,
+      "pre_compact": true
     }
   }
 }
@@ -67,12 +105,12 @@ Disable individual hooks via `plugin.hooks_enabled` (all default to `true`):
 ## Gotcha
 
 - **audit.lock** — PID + TTL at `REPO_ROOT/.claude/audit.lock` prevents concurrent audits. Auto-released on TTL expiry or PID death. Check `audit-bg.log` before manual deletion.
-- **Reentrance guard** — `FEEDBACK_LOOP_ACTIVE=1` env var prevents child process re-entry. Blocks infinite loops where hook → audit script → file edit → hook re-triggers.
-- **Debounce** — Consecutive edits debounced for 10 seconds. Managed via `REPO_ROOT/.claude/audit-debounce.ts` timestamp. Only the last edit triggers audit.
+- **Reentrance guard** — `FEEDBACK_LOOP_ACTIVE=1` env var prevents child process re-entry.
+- **Debounce** — Consecutive edits debounced for 10 seconds via `REPO_ROOT/.claude/audit-debounce.ts`.
 - **Worktree awareness** — `context.mjs` `resolveRepoRoot()` uses cwd-based `git rev-parse` first. Sub-agents in worktrees use the worktree root, not the main repo.
 - **Fail-open** — session-gate errors pass through (prevents system lockout). Audit failures likewise.
-- **PreCompact snapshot** — Before `/compact`, saves audit state (retro-marker, audit.lock, last item) to `REPO_ROOT/.claude/compaction-snapshot.json`. Auto-restored on SessionStart.
-- **Context Reinforcement** — SessionStart re-injects AI-GUIDE.md "Absolute Rules" section via `<CONTEXT-REINFORCEMENT>` tag. Ensures core protocol rules survive context compression.
+- **PreCompact snapshot** — Before `/compact`, saves audit state to `REPO_ROOT/.claude/compaction-snapshot.json`. Auto-restored on SessionStart.
+- **Context Reinforcement** — SessionStart re-injects AI-GUIDE.md "Absolute Rules" section via `<CONTEXT-REINFORCEMENT>` tag.
 
 ## Code Patterns
 
@@ -80,6 +118,7 @@ Disable individual hooks via `plugin.hooks_enabled` (all default to `true`):
 - **i18n**: `locales/{ko,en}.json` + `context.mjs` `t()` function. Uses `plugin.locale` config value.
 - **context.mjs single source**: All scripts import config, paths, tag constants from `context.mjs`. No duplicate parsing.
 - **Policy as Data**: Audit criteria changes require no code changes → edit `references/{locale}/*.md` only.
+- **Tool-First**: Deterministic tools (`code_map`, `dependency_graph`) run before LLM reasoning. Minimizes inference, maximizes facts.
 
 ## Resume (auto-recovery)
 

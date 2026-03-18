@@ -13,6 +13,7 @@
 | `claim-drift` | Doc and code behavior diverge | `[major]`: behavioral diff / `[minor]`: doc typo |
 | `principle-drift` | SOLID/YAGNI/DRY/KISS/LoD structural regression | `[major]`: structural regression / `[minor]`: minor violation |
 | `security-drift` | OWASP TOP 10 violation or attacker-perspective vulnerability | `[major]`: always |
+| `coverage-gap` | Changed file coverage below threshold | `[major]`: stmt < 85% or branch < 75% / `[minor]`: within 5% of threshold |
 
 ## Usage Rules
 

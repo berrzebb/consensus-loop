@@ -36,8 +36,18 @@ consensus-loop/
 │   ├── planner/           ← consensus-loop:planner — 플래닝 + 작업 분해
 │   └── consensus-loop/    ← consensus-loop:guide — 증거 패키지 가이드
 │
-├── agents/                ← 에이전트 정의 파일
-├── commands/              ← CLI 명령 (자동 발견)
+├── agents/
+│   ├── implementer.md     ← Headless worker (worktree isolation, Sonnet)
+│   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
+│
+├── scripts/               ← Deterministic tools + MCP server
+│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
+│   ├── code-map.mjs       ← Symbol index generator
+│   ├── audit-scan.mjs     ← Pattern scanner
+│   ├── coverage-mapper.mjs← Coverage → RTM mapper
+│   └── add-locale-key.mjs ← Locale key helper
+│
+├── commands/              ← CLI commands (auto-discovered)
 │
 ├── context.mjs            ← 공유 모듈: config, 경로, 파서, i18n 캐시
 ├── index.mjs              ← PostToolUse 훅 진입점
@@ -47,10 +57,12 @@ consensus-loop/
 ├── session-gate.mjs       ← PreToolUse 훅: 회고 미완료 시 Bash/커밋 차단
 ├── pre-compact.mjs        ← PreCompact 훅: 압축 전 감사 상태 스냅샷
 ├── session-start.mjs      ← SessionStart 훅: 핸드오프 동기화 + resume 감지 + 규칙 재주입
-├── session-stop.mjs       ← Stop 훅: 핸드오프 동기화 + 자동 커밋
-├── CLAUDE.md              ← AI 에이전트 컨텍스트 (모듈 맵, gotcha, config 참조)
-├── cli-runner.mjs         ← CLI 바이너리 경로 해석 (Windows + Linux)
-├── i18n.mjs               ← 로케일 헬퍼 (standalone)
+├── session-stop.mjs       ← Stop hook: handoff sync + auto-commit
+├── subagent-stop.mjs      ← SubagentStop hook: worker completion + deferred retro
+├── CLAUDE.md              ← AI agent context (module map, gotcha, config reference)
+├── cli-runner.mjs         ← Cross-platform binary resolver
+├── handoff-writer.mjs     ← Bidirectional repo ↔ memory handoff sync
+├── i18n.mjs               ← Standalone locale helper
 │
 ├── locales/               ← UI 문자열
 │   ├── en.json
@@ -161,8 +173,8 @@ audit-prompt.md (30줄)
 ### 방법 A: Claude Code 플러그인 (권장)
 
 ```bash
-claude marketplace add berrzebb/berrzebb-plugins
-claude plugin add consensus-loop@berrzebb-plugins
+claude plugin marketplace add berrzebb/claude-plugins
+claude plugin install consensus-loop@berrzebb-plugins
 ```
 
 All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and skills are registered automatically.

@@ -301,9 +301,242 @@ function toolCoverageMap(params) {
   return { text: rows.join("\n"), summary: `${count} files` };
 }
 
+// ═══ Tool: dependency_graph ═════════════════════════════════════════════
+
+const IMPORT_RE = /^import\s+(?:type\s+)?(?:\{[^}]*\}|\w+|\*\s+as\s+\w+)(?:\s*,\s*(?:\{[^}]*\}|\w+))?\s+from\s+["']([^"']+)["']/;
+const REQUIRE_RE = /(?:require|import)\s*\(\s*["']([^"']+)["']\s*\)/;
+const EXPORT_FROM_RE = /^export\s+(?:type\s+)?\{[^}]*\}\s+from\s+["']([^"']+)["']/;
+const DYNAMIC_IMPORT_RE = /import\s*\(\s*["']([^"']+)["']\s*\)/;
+
+function extractImports(filePath) {
+  let content;
+  try { content = readFileSync(filePath, "utf8"); } catch { return []; }
+  const imports = [];
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+    for (const re of [IMPORT_RE, EXPORT_FROM_RE, REQUIRE_RE, DYNAMIC_IMPORT_RE]) {
+      const m = trimmed.match(re);
+      if (m && m[1]) {
+        imports.push(m[1]);
+        break;
+      }
+    }
+  }
+  return imports;
+}
+
+function resolveImportPath(fromFile, specifier, extensions) {
+  if (specifier.startsWith(".")) {
+    const base = resolve(dirname(fromFile), specifier);
+    // Try exact, then with extensions, then as directory index
+    if (existsSync(base) && statSync(base).isFile()) return base;
+    for (const ext of extensions) {
+      const withExt = base + ext;
+      if (existsSync(withExt)) return withExt;
+    }
+    for (const ext of extensions) {
+      const index = resolve(base, "index" + ext);
+      if (existsSync(index)) return index;
+    }
+  }
+  return null; // external package — not tracked
+}
+
+function buildDependencyGraph(targetPath, maxDepth, extensions) {
+  const target = resolve(targetPath);
+  const stat_ = statSync(target, { throwIfNoEntry: false });
+  if (!stat_) return { error: `Not found: ${target}` };
+
+  const extSet = extensions
+    ? new Set(extensions.split(","))
+    : CODE_EXT;
+  const extArr = [...extSet];
+
+  const files = stat_.isDirectory()
+    ? walkDir(target, extSet, maxDepth)
+    : [target];
+
+  const cwd = process.cwd();
+  const fileSet = new Set(files.map(f => f.replace(/\\/g, "/")));
+
+  // Build adjacency list: file → [files it imports]
+  const edges = new Map();   // file → Set<file>
+  const inEdges = new Map(); // file → Set<file> (reverse)
+
+  for (const file of files) {
+    const norm = file.replace(/\\/g, "/");
+    if (!edges.has(norm)) edges.set(norm, new Set());
+    if (!inEdges.has(norm)) inEdges.set(norm, new Set());
+
+    const imports = extractImports(file);
+    for (const spec of imports) {
+      const resolved = resolveImportPath(file, spec, extArr);
+      if (!resolved) continue;
+      const resolvedNorm = resolved.replace(/\\/g, "/");
+      if (!fileSet.has(resolvedNorm)) continue; // outside scope
+
+      edges.get(norm).add(resolvedNorm);
+      if (!inEdges.has(resolvedNorm)) inEdges.set(resolvedNorm, new Set());
+      inEdges.get(resolvedNorm).add(norm);
+    }
+  }
+
+  // Topological sort (Kahn's algorithm)
+  const inDegree = new Map();
+  for (const f of files) {
+    const norm = f.replace(/\\/g, "/");
+    inDegree.set(norm, (inEdges.get(norm) || new Set()).size);
+  }
+  const queue = [];
+  for (const [f, deg] of inDegree) {
+    if (deg === 0) queue.push(f);
+  }
+  const topoOrder = [];
+  const visited = new Set();
+  while (queue.length > 0) {
+    const f = queue.shift();
+    if (visited.has(f)) continue;
+    visited.add(f);
+    topoOrder.push(f);
+    for (const dep of (edges.get(f) || [])) {
+      inDegree.set(dep, (inDegree.get(dep) || 1) - 1);
+      if (inDegree.get(dep) === 0) queue.push(dep);
+    }
+  }
+  // Files in cycles won't appear in topoOrder
+  const cycleFiles = files.map(f => f.replace(/\\/g, "/")).filter(f => !visited.has(f));
+
+  // Connected components (undirected)
+  const componentOf = new Map();
+  let componentId = 0;
+  const undirectedAdj = new Map();
+  for (const f of files) {
+    const norm = f.replace(/\\/g, "/");
+    if (!undirectedAdj.has(norm)) undirectedAdj.set(norm, new Set());
+    for (const dep of (edges.get(norm) || [])) {
+      undirectedAdj.get(norm).add(dep);
+      if (!undirectedAdj.has(dep)) undirectedAdj.set(dep, new Set());
+      undirectedAdj.get(dep).add(norm);
+    }
+  }
+  const compVisited = new Set();
+  const components = [];
+  for (const f of files) {
+    const norm = f.replace(/\\/g, "/");
+    if (compVisited.has(norm)) continue;
+    const comp = [];
+    const stack = [norm];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (compVisited.has(n)) continue;
+      compVisited.add(n);
+      comp.push(n);
+      componentOf.set(n, componentId);
+      for (const neighbor of (undirectedAdj.get(n) || [])) {
+        if (!compVisited.has(neighbor)) stack.push(neighbor);
+      }
+    }
+    components.push(comp);
+    componentId++;
+  }
+
+  // Format output
+  const rows = [];
+  const totalEdges = [...edges.values()].reduce((s, e) => s + e.size, 0);
+
+  // Component summary
+  rows.push("## Components\n");
+  rows.push(`${components.length} connected components, ${files.length} files, ${totalEdges} edges\n`);
+  for (let i = 0; i < components.length; i++) {
+    const comp = components[i];
+    if (comp.length === 1) continue; // skip singletons in summary
+    rows.push(`### Component ${i} (${comp.length} files)`);
+    for (const f of comp.sort()) {
+      rows.push(`  ${relative(cwd, f).replace(/\\/g, "/")}`);
+    }
+    rows.push("");
+  }
+
+  // Dependency table (non-singleton files only)
+  const connectedFiles = files
+    .map(f => f.replace(/\\/g, "/"))
+    .filter(f => (edges.get(f)?.size || 0) > 0 || (inEdges.get(f)?.size || 0) > 0);
+
+  if (connectedFiles.length > 0) {
+    rows.push("## Dependencies\n");
+    rows.push("| File | Imports | Imported By |");
+    rows.push("|------|---------|-------------|");
+    for (const f of connectedFiles.sort()) {
+      const rel = relative(cwd, f).replace(/\\/g, "/");
+      const deps = [...(edges.get(f) || [])].map(d => relative(cwd, d).replace(/\\/g, "/"));
+      const revs = [...(inEdges.get(f) || [])].map(d => relative(cwd, d).replace(/\\/g, "/"));
+      rows.push(`| ${rel} | ${deps.join(", ") || "—"} | ${revs.join(", ") || "—"} |`);
+    }
+    rows.push("");
+  }
+
+  // Topological order (leaf → root)
+  if (topoOrder.length > 0) {
+    rows.push("## Topological Order (safe execution sequence)\n");
+    for (let i = 0; i < topoOrder.length; i++) {
+      rows.push(`${i + 1}. ${relative(cwd, topoOrder[i]).replace(/\\/g, "/")}`);
+    }
+    rows.push("");
+  }
+
+  // Cycles
+  if (cycleFiles.length > 0) {
+    rows.push("## Cycles Detected\n");
+    rows.push("These files have circular dependencies and cannot be topologically sorted:\n");
+    for (const f of cycleFiles.sort()) {
+      rows.push(`- ${relative(cwd, f).replace(/\\/g, "/")}`);
+    }
+  }
+
+  // Singletons (isolated files)
+  const singletons = components.filter(c => c.length === 1);
+  if (singletons.length > 0) {
+    rows.push(`\n## Isolated Files (${singletons.length})\n`);
+    rows.push("No imports from/to other files in scope.\n");
+  }
+
+  return {
+    text: rows.join("\n"),
+    summary: `${files.length} files, ${totalEdges} edges, ${components.length} components` +
+      (cycleFiles.length > 0 ? `, ${cycleFiles.length} in cycles` : ""),
+    json: {
+      files: files.length,
+      edges: totalEdges,
+      components: components.length,
+      cycles: cycleFiles.length,
+    },
+  };
+}
+
+function toolDependencyGraph(params) {
+  const { path: targetPath, depth = 5, extensions } = params;
+  if (!targetPath) return { error: "path is required" };
+
+  // Cache check
+  const cacheKey = getCacheKey(targetPath, "depgraph", depth);
+  const target = resolve(targetPath);
+  const latestMtime = getLatestMtime(target);
+  const cached = CACHE.get(cacheKey);
+  if (cached && cached.mtime >= latestMtime) {
+    return { ...cached.result, cached: true };
+  }
+
+  const result = buildDependencyGraph(targetPath, depth, extensions);
+  if (result.error) return result;
+
+  CACHE.set(cacheKey, { mtime: latestMtime, result });
+  return result;
+}
+
 // ═══ MCP Protocol ═══════════════════════════════════════════════════════
 
-const SERVER_INFO = { name: "consensus-loop", version: "2.2.0" };
+const SERVER_INFO = { name: "consensus-loop", version: "2.3.0" };
 
 const TOOLS = [
   {
@@ -330,6 +563,19 @@ const TOOLS = [
         pattern: { type: "string", description: "Scan pattern: all, type-safety, hardcoded, console" },
         path:    { type: "string", description: "Target path to scan" },
       },
+    },
+  },
+  {
+    name: "dependency_graph",
+    description: "Build a cached import/export dependency graph for a directory. Returns connected components (natural work boundaries), topological order (safe execution sequence), dependency table (imports/imported-by per file), and cycle detection. Use for work decomposition — components that share no edges can be assigned to parallel workers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path:       { type: "string", description: "Directory or file to analyze" },
+        depth:      { type: "number", description: "Max directory depth (default: 5)" },
+        extensions: { type: "string", description: "File extensions (default: .ts,.tsx,.js,.jsx,.mjs,.mts)" },
+      },
+      required: ["path"],
     },
   },
   {
@@ -375,6 +621,15 @@ function handleRequest(req) {
           return { content: [{ type: "text", text: result.stdout || result.error }], isError: true };
         }
         return { content: [{ type: "text", text: result.text }] };
+      }
+
+      if (name === "dependency_graph") {
+        const result = toolDependencyGraph(args || {});
+        if (result.error) {
+          return { content: [{ type: "text", text: result.error }], isError: true };
+        }
+        const tag = result.cached ? " [cached]" : "";
+        return { content: [{ type: "text", text: `${result.text}\n\n(${result.summary}${tag})` }] };
       }
 
       if (name === "coverage_map") {

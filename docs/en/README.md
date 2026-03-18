@@ -36,7 +36,17 @@ consensus-loop/
 │   ├── planner/           ← consensus-loop:planner — planning + work breakdown
 │   └── consensus-loop/    ← consensus-loop:guide — evidence package guide
 │
-├── agents/                ← Agent definition files
+├── agents/
+│   ├── implementer.md     ← Headless worker (worktree isolation, Sonnet)
+│   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
+│
+├── scripts/               ← Deterministic tools + MCP server
+│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
+│   ├── code-map.mjs       ← Symbol index generator
+│   ├── audit-scan.mjs     ← Pattern scanner
+│   ├── coverage-mapper.mjs← Coverage → RTM mapper
+│   └── add-locale-key.mjs ← Locale key helper
+│
 ├── commands/              ← CLI commands (auto-discovered)
 │
 ├── context.mjs            ← Shared module: config, paths, parsers, i18n cache
@@ -45,9 +55,12 @@ consensus-loop/
 ├── respond.mjs            ← Syncs claude.md ↔ gpt.md, promotes/demotes tags
 ├── retrospective.mjs      ← Sets retro marker after all items agreed
 ├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
-├── session-start.mjs      ← SessionStart hook: assigns session ID
-├── session-stop.mjs       ← Stop hook: cleanup on session end
+├── session-start.mjs      ← SessionStart hook: handoff sync + resume + context reinforcement
+├── session-stop.mjs       ← Stop hook: handoff sync + auto-commit
+├── subagent-stop.mjs      ← SubagentStop hook: worker completion + deferred retro
+├── pre-compact.mjs        ← PreCompact hook: state snapshot before compaction
 ├── cli-runner.mjs         ← Cross-platform binary resolver
+├── handoff-writer.mjs     ← Bidirectional repo ↔ memory handoff sync
 ├── i18n.mjs               ← Standalone locale helper
 │
 ├── locales/
@@ -55,7 +68,7 @@ consensus-loop/
 │   ├── audit-prompt.md    ← Facade (~30 lines) → references
 │   ├── fix-prompt.md      ← Facade → references
 │   ├── retro-prompt.md    ← Facade → references
-│   └── references/{ko,en}/  ← 8 team policy files × 2 languages
+│   └── references/{ko,en}/  ← 10 team policy files × 2 languages
 │
 ├── tests/
 ├── plans/
@@ -129,8 +142,8 @@ Single source for all scripts: config (1 parse), memoized paths, tag constants, 
 ### Option A: Claude Code Plugin (Recommended)
 
 ```bash
-claude marketplace add berrzebb/berrzebb-plugins
-claude plugin add consensus-loop@berrzebb-plugins
+claude plugin marketplace add berrzebb/claude-plugins
+claude plugin install consensus-loop@berrzebb-plugins
 ```
 
 All hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and skills are registered automatically.

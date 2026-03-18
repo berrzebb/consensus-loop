@@ -119,7 +119,7 @@ Orchestrator distributes Forward RTM rows to implementers
 
 ### Procedure
 
-1. **Spawn scout agent** — read-only, thorough analysis (Sonnet):
+1. **Spawn scout agent** — read-only, thorough analysis (Opus):
    ```json
    {
      "prompt": "[target tracks + design doc paths]",
