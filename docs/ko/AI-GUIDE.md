@@ -1,64 +1,68 @@
-# consensus-loop AI 에이전트 가이드
+# consensus-loop AI Agent Guide
 
-> 이 문서는 consensus-loop 훅이 설치된 프로젝트에서 작업하는 **AI 에이전트(Claude)**를 위한 가이드입니다.
+> This document is for **AI agents (Claude)** working in projects with the consensus-loop hook installed.
 
-## 역할 체인
+## Role Chain
 
-consensus-loop는 4개 역할이 순환하는 멀티 에이전트 프로토콜입니다:
+consensus-loop is a multi-agent protocol with 4 roles in a cycle:
 
-| 역할 | 책임 | 격리 |
-|------|------|------|
-| **planner** | 트랙 정의 + 실행계획(work-breakdown) 조정 | fork (Opus) |
-| **orchestrator** | execution-order에서 WB 선택 → implementer 분배 → 회고 → squash merge → 핸드오프 | 메인 세션 |
-| **implementer** | worktree에서 구현 + 테스트 + 증거 제출 + WIP 커밋 | worktree (Sonnet) |
-| **auditor** | 증거 독립 검증 → 합의/반려 판정 | 별도 프로세스 (GPT/Codex) |
+| Role | Responsibility | Isolation |
+|------|---------------|-----------|
+| **planner** | Track definition + execution plan (work-breakdown) adjustment | fork (Opus) |
+| **orchestrator** | Select WB from execution-order → distribute to implementer → retrospective → squash merge → handoff | main session |
+| **implementer** | Implement in worktree + test + submit evidence + WIP commit | worktree (Sonnet) |
+| **auditor** | Independent evidence verification → agree/reject verdict | separate process (GPT/Codex) |
 
-> **참고**: implementer의 정규 사양은 `agents/implementer.md`입니다. `consensus-loop:implementer` 스킬은 레거시 진입점입니다.
+> **Note**: The authoritative implementer spec is `agents/implementer.md`. The `consensus-loop:implementer` skill is a redirect stub pointing to the agent definition.
 
-## 전체 사이클
+## Full Cycle
 
 ```
-planner ─── 트랙 정의 + 실행계획 조정
+planner ─── Track definition + execution plan adjustment
     ↓
-orchestrator ─── execution-order에서 WB 선택 → 스코프 검증 → 병렬 분배
-    ↓                                         (파일 중복 없는 트랙만)
+orchestrator ─── Select WB from execution-order → scope validation → parallel distribute
+    ↓                                              (non-overlapping files only)
 ┌─── Track A (worktree) ──────┐  ┌─── Track B (worktree) ──────┐
-│  implementer: 구현 + 테스트   │  │  implementer: 구현 + 테스트   │
+│  implementer: implement+test │  │  implementer: implement+test │
 │  → consensus-loop:verify     │  │  → consensus-loop:verify     │
 │    (CQ/T/CC/CL/S/I/FV)      │  │    (CQ/T/CC/CL/S/I/FV)      │
-│  → 증거 제출                  │  │  → 증거 제출                  │
-│  → 감사 (비동기)              │  │  → 감사 (비동기)              │
-│  [pending_tag] → SendMessage │  │  [agree_tag] → WIP 커밋      │
-│  → 보정 → 재제출              │  │                               │
-│  [agree_tag] → WIP 커밋      │  │                               │
+│  → submit evidence           │  │  → submit evidence           │
+│  → audit (async)             │  │  → audit (async)             │
+│  [pending_tag] → SendMessage │  │  [agree_tag] → WIP commit    │
+│  → correction → resubmit    │  │                               │
+│  [agree_tag] → WIP commit   │  │                               │
 └──────────────────────────────┘  └──────────────────────────────┘
-    ↓ (모든 트랙: agree_tag + WIP 커밋)
-회고 프로토콜 (session-gate 차단)
-    → 잘된 것 / 문제인 것 / 메모리 갱신
-    → "session-self-improvement-complete" → 게이트 해제
+    ↓ (all tracks: agree_tag + WIP commit)
+Retrospective protocol (session-gate blocks Bash/Agent)
+    → what went well / what went wrong / memory update
+    → "session-self-improvement-complete" → gate release
     ↓
-orchestrator: /consensus-loop:merge → squash merge → 단일 커밋
+orchestrator: /consensus-loop:merge → squash merge → single commit
     ↓
-orchestrator: 세션 핸드오프 작성 → 다음 WB 선택 → 반복
+orchestrator: write session handoff → select next WB → loop
 ```
 
-## 증거 패키지 형식
+## Evidence Package Format
 
-watch_file (보통 `docs/feedback/claude.md`)에 **Write (전체 교체)**로 작성합니다:
+Write to the watch_file (typically `docs/feedback/claude.md`) using **Write (full replacement)**.
+
+Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
+
+Required sections:
 
 ```markdown
-## [trigger_tag] 작업 제목
+## [trigger_tag] Task Title
 
 ### Claim
-무엇을 했는지 구체적으로 서술. 단, claim에 포함되지 않은 변경은 diff에서도 없어야 합니다.
+Describe what you did, specifically. Changes not mentioned in the claim must not appear in the diff.
 
 ### Changed Files
 
 **Code**
-- `src/path/to/file.ts` — 변경 내용 설명
+- `src/path/to/file.ts` — description of changes
 
 **Tests**
-- `tests/path/to/file.test.ts` — 테스트 추가/수정 설명
+- `tests/path/to/file.test.ts` — test additions/modifications
 
 ### Test Command
 ```bash
@@ -69,133 +73,147 @@ npx tsc --noEmit
 
 ### Test Result
 ```
-실제 터미널 출력을 그대로 복사-붙여넣기합니다.
-요약 금지 — 감사자가 검증할 수 있는 원본 출력이어야 합니다.
+Paste actual terminal output here verbatim.
+No summaries — the auditor must be able to verify the raw output.
 ```
 
 ### Residual Risk
-닫지 못한 항목. 공격자가 악용 가능한 것은 Residual Risk가 아니라 수정 대상입니다.
-알려진 미해결 사항이 없으면 "없음"으로 기재합니다.
+Known unresolved items. If exploitable by an attacker, it is a fix target, not residual risk.
+Write "None" if there are no known unresolved items.
 ```
 
-## 절대 규칙
+## Absolute Rules
 
-1. **태그는 `[trigger_tag]`만 사용** — `[완료]`, `[부분 완료]` 등 비표준 태그 금지. 감사자가 판정하면 `[agree_tag]` 또는 `[pending_tag]`를 사용합니다.
-2. **자기 승격 금지** — 당신이 `[agree_tag]`를 직접 붙일 수 없습니다. 감사자만 승격합니다.
-3. **Test Command는 재실행 가능해야 함** — 감사자가 그대로 복사해서 실행합니다. glob 패턴 금지.
-4. **변경 파일 각각 eslint 통과 필수** — 하나라도 실패하면 감사가 반려됩니다.
-5. **설계 문서 수정 금지** — `docs/` 하위 설계 문서는 읽기 전용입니다.
-6. **증거는 정확히 1개 섹션** — 한 번에 여러 증거를 동시에 제출하지 않습니다.
-7. **Changed Files는 실제 diff와 일치** — claim 범위 밖의 파일이 diff에 있으면 `scope-mismatch`로 반려됩니다.
+1. **Only use `[trigger_tag]`** — never use non-standard labels like `[Done]`, `[Partial]`. The auditor uses `[agree_tag]` or `[pending_tag]`.
+2. **No self-promotion** — you cannot apply `[agree_tag]` yourself. Only the auditor promotes.
+3. **Test Commands must be re-runnable** — the auditor copies and executes them verbatim. No glob patterns.
+4. **Every changed file must pass eslint individually** — one failure means rejection.
+5. **Never modify design docs** — `docs/` design documents are read-only.
+6. **Exactly 1 evidence section per submission** — do not submit multiple evidence sections simultaneously.
+7. **Changed Files must match the actual diff** — files in the diff but not in the evidence (or vice versa) trigger `scope-mismatch` rejection.
 
-## 검증 시퀀스 (consensus-loop:verify)
+## Verification Sequence (consensus-loop:verify)
 
-증거 제출 전에 **반드시** `/consensus-loop:verify`를 실행하세요. 7개 카테고리를 순차 검증합니다:
+**Always** run `/consensus-loop:verify` before submitting evidence. It executes 7 categories sequentially:
 
-| # | 카테고리 | 코드 | 검증 내용 | 통과 조건 |
-|---|----------|------|-----------|-----------|
-| 1 | Code Quality | CQ-1~CQ-4 | 파일별 eslint + tsc + 금지 패턴 | 모든 변경 파일 lint/tsc 통과 |
-| 2 | Test | T-1~T-4 | 테스트 실행 + claim별 직접 테스트 존재 + 회귀 없음 | 증거의 테스트 커맨드 통과 |
-| 3 | Claim-Code Consistency | CC-1~CC-3 | claim과 코드 동작 일치 + 파일 목록이 diff와 일치 | claim ↔ diff 불일치 없음 |
-| 4 | Cross-Layer Contract | CL-1~CL-3 | BE→FE 문서화 + 새 인터페이스에 소비자 존재 | 계층 간 계약 추적 가능 |
-| 5 | Security | S-1~S-3 | 새 입력 검증 + 엔드포인트 인증 + 민감 데이터 미노출 | OWASP 위반 없음 |
-| 6 | i18n | I-1~I-2 | 사용자 문자열 로케일 키 사용 + 모든 로케일에 키 존재 | 하드코딩 문자열 없음 |
-| 7 | Frontend Verification | FV-1~FV-5 | 페이지 로드 + DOM 요소 + 콘솔 에러 없음 + 빌드 성공 | FE 변경 시에만 실행 |
+| # | Category | Codes | Checks | Pass Condition |
+|---|----------|-------|--------|----------------|
+| 1 | Code Quality | CQ-1~CQ-4 | Per-file eslint + tsc + no forbidden patterns | All changed files pass lint/tsc |
+| 2 | Test | T-1~T-4 | Test execution + direct test per claim + no regressions | Evidence test commands pass |
+| 3 | Claim-Code Consistency | CC-1~CC-3 | Claim matches code behavior + file list matches diff | No claim ↔ diff mismatch |
+| 4 | Cross-Layer Contract | CL-1~CL-3 | BE→FE documented + new interface has consumer | Cross-layer contracts traceable |
+| 5 | Security | S-1~S-3 | New inputs validated + endpoints auth-guarded + sensitive data not exposed | No OWASP violations |
+| 6 | i18n | I-1~I-2 | User strings use locale keys + keys present in ALL locales | No hardcoded strings |
+| 7 | Frontend Verification | FV-1~FV-5 | Page loads + DOM elements + no console errors + build succeeds | Only runs when FE files changed |
 
-출력: 카테고리별 PASS/FAIL 통합 테이블. **모두 PASS여야 제출 가능**.
+Output: Integrated PASS/FAIL table per category. **All must PASS before submission**.
 
-## 반려 코드
+## Rejection Codes
 
-감사자가 사용하는 반려 코드 전체 목록:
+Full list of rejection codes used by the auditor:
 
-| 코드 | 심각도 | 의미 | 트리거 |
-|------|--------|------|--------|
-| `needs-evidence` | major/minor | 증거 패키지 누락 또는 부실 | 핵심 claim 미지원 / 부분 격차 |
-| `scope-mismatch` | **major** | claim과 코드 범위 불일치 | diff의 파일이 증거에 없거나 그 반대 |
-| `lint-gap` | **major** | lint 실패 | CQ-1/CQ-2 실패. `file:L{line}` + 에러 메시지 필수 |
-| `test-gap` | **major** | 테스트 부족 | T-1 실패 또는 T-2 미충족 (직접 테스트 없음) |
-| `claim-drift` | **minor** | 증거 서술과 코드 동작 불일치 | CC-1 실패 (증거에는 X라 했지만 코드는 Y) |
-| `principle-drift` | major/minor | SOLID/YAGNI/DRY/KISS/LoD 위반 | 구조적 회귀 / 경미한 원칙 위반 |
-| `security-drift` | **critical** | OWASP TOP 10 위반 | S-1/S-2/S-3 실패. 공격 시나리오 포함 필수 |
+| Code | Severity | Meaning | Trigger |
+|------|----------|---------|---------|
+| `needs-evidence` | major/minor | Evidence package missing or weak | Core claim unsupported / partial gaps |
+| `scope-mismatch` | **major** | Claim vs code scope mismatch | Files in diff not in evidence or vice versa |
+| `lint-gap` | **major** | Lint failed | CQ-1/CQ-2 fails. Must include `file:L{line}` + error |
+| `test-gap` | **major** | Tests missing/insufficient | T-1 fails or T-2 not met (no direct test) |
+| `claim-drift` | **minor** | Evidence description doesn't match code behavior | CC-1 fails (evidence says X, code does Y) |
+| `principle-drift` | major/minor | SOLID/YAGNI/DRY/KISS/LoD violation | Structural regression / minor principle violation |
+| `security-drift` | **critical** | OWASP TOP 10 violation | S-1/S-2/S-3 fails. Must include attack scenario |
+| `regression` | **major** | Existing test broke | T-3 fails (previously passing test now fails) |
+| `i18n-gap` | **minor** | Hardcoded user-facing strings | I-1/I-2 fails (strings not using locale keys) |
+| `contract-gap` | **major** | Cross-layer contract broken | CL-1/CL-2/CL-3 fails (interface without consumer) |
 
-## 비동기 감사 동작
+## Async Audit Behavior
 
-증거를 제출하면(watch_file에 `[trigger_tag]` 포함하여 저장):
+When you submit evidence (save watch_file with `[trigger_tag]`):
 
-1. PostToolUse 훅이 감사를 **백그라운드**에서 시작합니다 (연속 편집 시 10초 디바운스 적용)
-2. 훅은 즉시 반환되므로 **다른 작업을 계속**하세요
-3. `.claude/audit.lock` 파일이 존재하면 감사가 진행 중입니다 (repo `.claude/` 디렉토리에 생성)
-4. **CronCreate로 3분 간격 감시 태스크를 등록**하세요:
-   - `.claude/audit.lock` 존재 여부 확인
-   - `node ${CLAUDE_PLUGIN_ROOT}/respond.mjs` 실행 (멱등, 플러그인 모드) 또는 `node .claude/hooks/consensus-loop/respond.mjs` (레거시)
-   - 결과가 있으면 사용자에게 보고
-5. 감사가 완료되면 `audit.lock`이 삭제되고 결과가 자동 동기화됩니다
+1. The PostToolUse hook starts the audit in the **background** (consecutive edits are debounced for 10 s)
+2. The hook returns immediately — **continue with other work**
+3. If `.claude/audit.lock` exists, an audit is in progress (created in repo's `.claude/` directory)
+4. **Register a 3-minute Cron watcher via CronCreate**:
+   - Check `.claude/audit.lock` existence
+   - Run `node ${CLAUDE_PLUGIN_ROOT}/respond.mjs` (idempotent, plugin mode) or `node .claude/hooks/consensus-loop/respond.mjs` (legacy)
+   - Report results to user if any
+5. When the audit completes, `audit.lock` is deleted and results auto-sync
 
-## [pending_tag] 보정 사이클
+## [pending_tag] Correction Cycle
 
-감사자가 반려하면 `respond.mjs`가 보정 항목을 전달합니다.
+When the auditor rejects, `respond.mjs` delivers correction items.
 
-### 보정 절차 (단일 에이전트)
-1. 반려 코드의 `구체 지점`(file:line)을 확인
-2. 코드를 수정
-3. 동일한 증거 패키지를 갱신하여 다시 제출 (`[trigger_tag]` 유지)
+### Correction Procedure (Single Agent)
+1. Check the rejection's specific locations (file:line)
+2. Fix the code
+3. Update the same evidence package and resubmit (keep `[trigger_tag]`)
 
-### 보정 절차 (멀티 에이전트 — orchestrator → implementer)
+### Correction Procedure (Multi-Agent — orchestrator → implementer)
 
-orchestrator는 보정 시 **새 에이전트를 스폰하지 않습니다**. 기존 에이전트의 `agent_id`에 `SendMessage`로 보정 지시를 전달합니다:
+The orchestrator **does not spawn a new agent** for corrections. It sends correction instructions to the existing agent's `agent_id` via `SendMessage`:
 
-- **major 반려** (test-gap, scope-mismatch, lint-gap) → SendMessage로 구체 보정 지시
-- **minor 반려** (claim-drift) → SendMessage로 증거 서술 갱신 지시
-- **critical 반려** (security-drift) → orchestrator가 직접 개입하여 수정
+- **major rejection** (test-gap, scope-mismatch, lint-gap) → SendMessage with specific correction instructions
+- **minor rejection** (claim-drift) → SendMessage requesting evidence description update
+- **critical rejection** (security-drift) → orchestrator intervenes directly to fix
 
-보정 완료 후 implementer가 증거를 재제출하면 감사가 다시 시작됩니다.
+After correction, the implementer resubmits evidence and the audit restarts.
 
-## Session Gate & 회고 프로토콜
+## Session Gate & Retrospective Protocol
 
-### Session Gate 동작
+### Session Gate Behavior
 
-`session-gate.mjs` (PreToolUse 훅)는 회고 완료 전까지 도구를 제한합니다:
+`session-gate.mjs` (PreToolUse hook) restricts tools until retrospective is complete:
 
-- **차단**: Bash, Agent, Git 관련 도구
-- **허용**: Read, Write, Edit, Glob, Grep, TodoWrite (메모리 작업용)
-- **세션 인식**: 감사를 완료한 세션만 차단 (다른 세션은 영향 없음)
-- **Fail-open**: 오류 시 통과 허용 (시스템 잠금 방지)
+- **Blocked**: Bash, Agent, Git-related tools
+- **Allowed**: Read, Write, Edit, Glob, Grep, TodoWrite (for memory work)
+- **Session-aware**: only blocks the session that completed the audit (other sessions unaffected)
+- **Fail-open**: errors pass through silently (never locks the system)
 
-### 지연 회고 (Deferred Retrospective)
+### Deferred Retrospective
 
-서브에이전트(implementer)는 session-gate를 통과하므로 직접 회고를 수행할 수 없습니다:
+Subagents (implementer) pass through session-gate and cannot perform retrospective directly:
 
-1. `subagent-stop.mjs`가 implementer 종료를 감지
-2. `deferred_to_orchestrator` 플래그 설정 → retro-marker에 기록
-3. orchestrator가 대신 회고를 수행
+1. `subagent-stop.mjs` detects implementer completion
+2. Sets `deferred_to_orchestrator` flag → recorded in retro-marker
+3. Orchestrator performs retrospective on their behalf
 
-이것은 원칙의 예외가 아니라 기술적 한계에 의한 대행입니다.
+This is not an exception to the principle — it is a technical limitation requiring delegation.
 
-### 회고 절차
+### Retrospective Procedure
 
-1. Bash/Agent 차단 (Read/Write/Edit만 가능)
-2. **즉시** 회고를 제시합니다 (사용자 지시를 기다리지 않음):
-   - 이번 사이클에서 잘된 것
-   - 문제였던 것 (솔직한 개선점)
-   - 개선할 것
-3. 사용자와 피드백을 교환합니다
-4. 피드백에서 반복 가능한 원칙을 메모리에 기록합니다
-5. 메모리를 정리합니다 — 중복/stale 항목 제거
-6. `echo session-self-improvement-complete` 실행 → 게이트 해제
-7. orchestrator: `/consensus-loop:merge` → squash merge → 단일 커밋
-8. orchestrator: 세션 핸드오프 작성 → 다음 WB 선택
+1. Bash/Agent blocked (only Read/Write/Edit allowed)
+2. **Immediately** present the retrospective (do not wait for user instruction):
+   - What went well this cycle
+   - What went wrong (honest improvements)
+   - What to improve
+3. Exchange feedback with the user
+4. Extract repeatable principles from feedback → save to memory
+5. Clean up memory — remove duplicate/stale entries
+6. Run `echo session-self-improvement-complete` → gate clears
+7. orchestrator: `/consensus-loop:merge` → squash merge → single structured commit
+8. orchestrator: write session handoff → select next WB
 
-## 정책 파일 참조
+## Skill Reference
 
-감사 기준은 코드가 아닌 파일로 관리됩니다:
+| Skill | Purpose | Invocation |
+|-------|---------|------------|
+| `consensus-loop:orchestrator` | Session orchestration — task distribution, agent tracking, correction cycles | User or auto |
+| `consensus-loop:implementer` | Headless worker — code, test, evidence (redirect to `agents/implementer.md`) | Orchestrator only |
+| `consensus-loop:verify` | Done-criteria verification report (CQ/T/CC/CL/S/I/FV) | Before evidence submission |
+| `consensus-loop:merge` | Squash-merge worktree branch with structured commit | After retro completion |
+| `consensus-loop:planner` | Track definition + work breakdown design | For planning tasks |
+| `consensus-loop:guide` | Evidence package writing guide | When preparing submissions |
 
-| 파일 | 내용 |
-|------|------|
-| `templates/references/{locale}/rejection-codes.md` | 반려 코드 정의 + 심각도 |
-| `templates/references/{locale}/test-checklist.md` | 테스트 충분성 기준 |
-| `templates/references/{locale}/output-format.md` | 감사 결과 형식 규칙 |
-| `templates/references/{locale}/evidence-format.md` | 증거 패키지 형식 |
-| `templates/references/{locale}/done-criteria.md` | 완료 기준 21개 (CQ/T/CC/CL/S/I/FV) |
-| `templates/references/{locale}/principles.md` | 코드 품질 원칙 |
+## Policy File References
 
-이 파일들을 읽으면 감사자가 어떤 기준으로 판정하는지 미리 파악할 수 있습니다.
+Audit criteria are managed as files, not code:
+
+| File | Content |
+|------|---------|
+| `templates/references/{locale}/rejection-codes.md` | Rejection code definitions + severity |
+| `templates/references/{locale}/test-checklist.md` | Test sufficiency criteria |
+| `templates/references/{locale}/output-format.md` | Audit result format rules |
+| `templates/references/{locale}/evidence-format.md` | Evidence package format |
+| `templates/references/{locale}/done-criteria.md` | 21 done criteria (CQ/T/CC/CL/S/I/FV) |
+| `templates/references/{locale}/principles.md` | Code quality principles |
+
+Reading these files helps you understand how the auditor will judge your work.

@@ -1,60 +1,50 @@
 ---
 name: consensus-loop:guide
-description: Guide for writing proper evidence packages for consensus-loop code review. Use when writing or editing the feedback watch file, submitting code for audit review, or when pending_tag items need to be addressed.
+description: "Guide for writing evidence packages for the consensus-loop watch file. Use when preparing code review submissions, structuring feedback evidence, or addressing audit rejections."
 version: 1.0.0
 ---
 
 # Consensus Loop — Evidence Package Guide
 
-When submitting code changes for consensus review, write a properly structured evidence package in the watch file (path configured in `config.json` → `consensus.watch_file`).
+When submitting code changes for consensus review, write a properly structured evidence package in the watch file.
 
-> **Important:** Tag names below (`trigger_tag`, `agree_tag`, `pending_tag`) are placeholders. Check your project's `${CLAUDE_PLUGIN_ROOT}/config.json` for actual values.
+## Step 0: Read Config
 
-## Required Structure
+Read `${CLAUDE_PLUGIN_ROOT}/config.json` first:
+- `consensus.watch_file` → submission path
+- `consensus.trigger_tag` / `agree_tag` / `pending_tag` → actual tag values
+- `plugin.respond_file` → auditor verdict file
+- `plugin.locale` → locale
 
-Every `trigger_tag` item must include these sections:
+## Step 1: Write Evidence
 
-```markdown
-## [trigger_tag] Task Title
+Follow the format defined in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
 
-### Claim
-What was changed and why — be specific about the function/module modified.
+Required sections: **Claim**, **Changed Files**, **Test Command**, **Test Result**, **Residual Risk**.
 
-### Changed Files
-- `path/to/file1.ts`
-- `path/to/file2.ts`
+Key rules:
+- **Test Command** must be executable as-is — no glob patterns, use explicit file paths
+- **Test Result** must be actual terminal output, not summaries
+- **Claim** must match the actual code changes
+- **Changed Files** paths must use backtick formatting
+- Every changed file must pass eslint individually
+- Use a single **Write** to the watch file (not sequential Edits)
 
-### Test Command
-<exact command that can be run to verify — no glob patterns>
-
-### Test Result
-<paste actual terminal output from running the test command>
-
-### Residual Risk
-- <known limitations or risks, or "none">
-```
-
-## Rules
-
-1. **Test Command** must be executable as-is — no glob patterns (`*.test.ts`), use explicit file paths
-2. **Test Result** must be actual terminal output, not summaries like "all tests passed"
-3. **Claim** must match the actual code changes — don't claim `extractText` was modified if the change is in `convertTableToMarkdown`
-4. **Changed Files** paths must use backtick formatting: `` `path/to/file.ts` ``
-5. **Every changed file must pass eslint individually** — the auditor runs `npx eslint <file>` per file
-
-## Tag Lifecycle
+## Step 2: Tag Lifecycle
 
 ```
-[trigger_tag] → Codex audits → [agree_tag] or [pending_tag]
-                                    ↓
-                            Fix issues, re-submit with [trigger_tag]
+[trigger_tag] → auditor reviews → [agree_tag] or [pending_tag]
+                                        ↓
+                                Fix issues, re-submit with [trigger_tag]
 ```
 
-## Addressing `pending_tag` Rejections
+## Step 3: Addressing Rejections
 
-When Codex returns `pending_tag`:
+When auditor returns `[pending_tag]`:
 
 1. Read the rejection codes in the respond file (e.g., `test-gap`, `claim-drift`, `scope-mismatch`)
 2. Fix each cited issue at the specific file:line locations
 3. Update the evidence package with corrected claims, tests, and results
-4. Keep the `trigger_tag` to trigger a new audit cycle
+4. Keep the `[trigger_tag]` to trigger a new audit cycle
+
+Full rejection code reference: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/rejection-codes.md`

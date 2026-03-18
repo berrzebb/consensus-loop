@@ -2,7 +2,7 @@
 name: implementer
 description: Headless worker for consensus-loop — receives task + context, implements code, runs tests, submits evidence to watch file, handles audit corrections. Use when the orchestrator needs to delegate a coding task to a worker agent.
 tools: Read, Edit, Write, Grep, Glob, Bash
-model: sonnet
+model: claude-sonnet-4-6
 isolation: worktree
 skills:
   - consensus-loop:verify
@@ -19,7 +19,7 @@ You are a headless worker. You receive a task with context and execute it autono
 
 If running in a worktree (`git rev-parse --git-dir` contains `/worktrees/`):
 - Check if `node_modules/` exists. If not → run `npm install` (or `npm ci` if `package-lock.json` exists)
-- This is required because git worktrees do not include gitignored directories
+- Required because git worktrees do not include gitignored directories
 
 ### 1. Read Config
 
@@ -32,7 +32,7 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 ### 2. Read References
 
 - Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
-- Detailed reference: `${CLAUDE_PLUGIN_ROOT}/skills/implementer/reference.md`
+- Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
 
 ## Input (provided by orchestrator)
 
@@ -58,7 +58,7 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 
 ### 3. Verify (before submitting evidence)
 
-Check every done-criteria item:
+Check every done-criteria item. Key checks:
 
 - **CQ**: `npx eslint <changed-file>` per file + `npx tsc --noEmit`
 - **T**: Run test commands, verify direct tests exist for each claim
@@ -67,30 +67,16 @@ Check every done-criteria item:
 - **S**: No new unvalidated inputs, no sensitive data exposure
 - **I**: Locale keys in ALL locale files (ko.json AND en.json)
 
+Full criteria details: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
+
 ### 4. Submit Evidence
 
-Write to the watch file (from config `consensus.watch_file`) with ALL sections:
+Write to the watch file (from config `consensus.watch_file`). Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
 
-```markdown
-## [trigger_tag] Task Title
-
-### Claim
-What was done — specific, verifiable.
-
-### Changed Files
-- `path/to/file.ts` — what changed
-
-### Test Command
-npx vitest run tests/specific.test.ts
-
-### Test Result
-(paste actual terminal output)
-
-### Residual Risk
-Known unresolved items.
-```
-
-Use a single Write (not sequential Edits) — atomic Write is preferred.
+Key rules:
+- Use a single **Write** (not sequential Edits) — atomic Write is preferred
+- Include ALL required sections: Claim, Changed Files, Test Command, Test Result, Residual Risk
+- Tag with `[trigger_tag]` from config
 
 ### 5. Wait for Audit Result
 
@@ -123,6 +109,20 @@ The orchestrator may send follow-up correction instructions via **SendMessage** 
 5. Wait for the next audit verdict
 
 Corrections are expected to be scoped — fix only what was rejected. Do NOT expand scope.
+
+## Scripts Quick Reference
+
+Bundled at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/`:
+
+```bash
+# Code pattern scan (0 tokens, replaces expensive grep)
+node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" all
+node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" type-safety
+node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" hardcoded
+
+# Add locale key to ko + en at once
+node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/add-locale-key.mjs" "key" "ko_value" "en_value"
+```
 
 ## Anti-Patterns
 

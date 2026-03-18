@@ -1,60 +1,31 @@
 # Implementer Reference
 
-## Done Criteria Summary
+## Scripts Quick Reference
 
-Before submitting evidence, verify ALL items:
+Bundled at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/`:
 
-| Category | Criteria | How to verify |
-|----------|---------|---------------|
-| CQ-1 | Per-file eslint pass | `npx eslint <file>` for each changed file |
-| CQ-2 | Type check pass | `npx tsc --noEmit` |
-| T-1 | Evidence test commands pass | Copy-paste and run |
-| T-2 | Direct tests exist for each claim | Test file:line reference |
-| CC-1 | Claim matches code | Read changed files |
-| CC-2 | Changed Files = git diff | `git diff --name-only` |
-| S-1 | New inputs validated | Check validator exists |
-| S-2 | New API has auth guard | Check guard file:line |
-| I-1 | Locale keys used | No hardcoded strings |
-| I-2 | ALL locales have key | Check ko.json + en.json |
+| Script | Usage | Purpose |
+|--------|-------|---------|
+| `audit-scan.mjs` | `node ... all` | Full codebase pattern scan (0 tokens) |
+| `audit-scan.mjs` | `node ... type-safety` | `as any`, `@ts-ignore`, `console.log` |
+| `audit-scan.mjs` | `node ... hardcoded` | Hardcoded strings, secrets, URLs |
+| `add-locale-key.mjs` | `node ... "key" "ko" "en"` | Add key to ALL locale files at once |
 
-Full details: `${CLAUDE_PLUGIN_ROOT}/templates/references/en/done-criteria.md`
+## Done Criteria Categories
 
-## Evidence Format
+| Category | Key Checks | When |
+|----------|-----------|------|
+| CQ (Code Quality) | eslint per-file + tsc --noEmit | Before evidence |
+| T (Test) | Execute test commands, verify direct tests | Before evidence |
+| CC (Claim-Code) | git diff --name-only matches Changed Files | Before evidence |
+| CL (Cross-Layer) | BE→FE contracts documented | Before evidence |
+| S (Security) | Input validation, auth guards | Before evidence |
+| I (i18n) | Locale keys in ALL locale files | Before evidence |
 
-```markdown
-## [trigger_tag] Task Title
-
-### Claim
-What was done — specific, verifiable.
-
-### Changed Files
-- `path/to/file.ts` — what changed
-
-### Test Command
-npx vitest run tests/specific.test.ts
-
-### Test Result
-(paste actual terminal output)
-
-### Residual Risk
-Known unresolved items.
-```
+Full criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
 
 ## Commit Rules
 
 - WIP commit only after `[agree_tag]`: `WIP(scope): short summary`
-- Never use feat/fix/refactor during implementation
-- Retrospective and squash merge are **orchestrator's responsibility** — not yours
-- Orchestrator runs `/merge-worktree` to create the final structured commit
-
-## Scripts Available
-
-Bundled scripts (available in both skill and agent contexts):
-
-```bash
-# Code pattern scan (0 tokens, replaces grep)
-node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs all
-
-# Add locale key to ko + en at once
-node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/add-locale-key.mjs "key" "ko_value" "en_value"
-```
+- Never use feat/fix/refactor during implementation — those are for squash merge
+- Retrospective and squash merge are **orchestrator's responsibility**

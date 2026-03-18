@@ -13,7 +13,7 @@ consensus-loop is a multi-agent protocol with 4 roles in a cycle:
 | **implementer** | Implement in worktree + test + submit evidence + WIP commit | worktree (Sonnet) |
 | **auditor** | Independent evidence verification → agree/reject verdict | separate process (GPT/Codex) |
 
-> **Note**: The authoritative implementer spec is `agents/implementer.md`. The `consensus-loop:implementer` skill is a legacy entry point.
+> **Note**: The authoritative implementer spec is `agents/implementer.md`. The `consensus-loop:implementer` skill is a redirect stub pointing to the agent definition.
 
 ## Full Cycle
 
@@ -44,7 +44,11 @@ orchestrator: write session handoff → select next WB → loop
 
 ## Evidence Package Format
 
-Write to the watch_file (typically `docs/feedback/claude.md`) using **Write (full replacement)**:
+Write to the watch_file (typically `docs/feedback/claude.md`) using **Write (full replacement)**.
+
+Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
+
+Required sections:
 
 ```markdown
 ## [trigger_tag] Task Title
@@ -187,6 +191,17 @@ This is not an exception to the principle — it is a technical limitation requi
 6. Run `echo session-self-improvement-complete` → gate clears
 7. orchestrator: `/consensus-loop:merge` → squash merge → single structured commit
 8. orchestrator: write session handoff → select next WB
+
+## Skill Reference
+
+| Skill | Purpose | Invocation |
+|-------|---------|------------|
+| `consensus-loop:orchestrator` | Session orchestration — task distribution, agent tracking, correction cycles | User or auto |
+| `consensus-loop:implementer` | Headless worker — code, test, evidence (redirect to `agents/implementer.md`) | Orchestrator only |
+| `consensus-loop:verify` | Done-criteria verification report (CQ/T/CC/CL/S/I/FV) | Before evidence submission |
+| `consensus-loop:merge` | Squash-merge worktree branch with structured commit | After retro completion |
+| `consensus-loop:planner` | Track definition + work breakdown design | For planning tasks |
+| `consensus-loop:guide` | Evidence package writing guide | When preparing submissions |
 
 ## Policy File References
 

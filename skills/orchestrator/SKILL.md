@@ -1,6 +1,6 @@
 ---
 name: consensus-loop:orchestrator
-description: Session orchestrator — reads handoff, distributes tasks to parallel workers, tracks agents, manages corrections via SendMessage, verifies results. Use when starting a session, distributing work, or reviewing worker output.
+description: "Session orchestrator for the consensus-loop — reads handoff, picks unblocked tasks, distributes to parallel workers, tracks agent assignments, manages correction cycles via SendMessage. Use when starting a work session with pending tasks, distributing implementation work, or reviewing completed worker output."
 argument-hint: "[optional: task-id to assign]"
 disable-model-invocation: true
 ---
@@ -17,16 +17,20 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 - `plugin.respond_file` → auditor verdict file
 - `plugin.handoff_file` → session handoff path (default: `.claude/session-handoff.md`)
 
-## Current State (auto-injected)
+## Current State
 
-- Handoff: !`node -e "const f=require('fs'),p=require('path'),c=JSON.parse(f.readFileSync('${CLAUDE_PLUGIN_ROOT}/config.json','utf8')),h=c.plugin?.handoff_file??'.claude/session-handoff.md';try{console.log(f.readFileSync(h,'utf8').substring(0,2000))}catch{console.log('no handoff')}"`
-- Recent commits: !`git log --oneline -5 2>/dev/null`
-- Audit status: !`node -e "const f=require('fs'),p=require('path'),c=JSON.parse(f.readFileSync('${CLAUDE_PLUGIN_ROOT}/config.json','utf8')),w=c.consensus.watch_file,d=p.dirname(w),r=c.plugin?.respond_file??'gpt.md',g=p.resolve(d,r);try{const l=f.readFileSync(g,'utf8').split('\n');console.log(l.find(x=>x.trim().startsWith('- '))||'no verdict')}catch{console.log('no verdict file')}"`
-- Audit lock: !`cat .claude/audit.lock 2>/dev/null || echo "no active audit"`
+`session-start.mjs` auto-injects the following via `additionalContext`:
+- Handoff contents (pending tasks, agent assignments)
+- Audit status (audit.lock, retro-marker, compaction-snapshot)
+- Resume instructions (how to continue interrupted work)
+
+**Check the auto-injected context first**, then query only what's missing:
+- Recent commits: `git log --oneline -5`
+- Audit verdict: read respond file
 
 ## Session Start
 
-1. Review the auto-injected state above
+1. Review the auto-injected context from session-start.mjs
 2. Parse handoff → build dependency graph → identify **all unblocked tasks**
 3. Check for active agents (tasks with `agent_id` field) → present resumption options
 4. Present available tasks with dependencies, blocked status, and agent assignments
@@ -38,50 +42,63 @@ The orchestrator tracks agent assignments in the **handoff file** itself. Each t
 
 ```markdown
 ### [task-id] Task Title
-- **상태**: 미착수 | 진행 중 | 감사 중 | 보정 중 | 완료
+- **status**: not-started | in-progress | auditing | correcting | done
 - **depends_on**: other-task-id | —
 - **blocks**: other-task-id | —
-- **agent_id**: <agent-id>           ← Agent tool이 반환한 ID
-- **worktree_path**: <path>          ← worktree 경로
-- **worktree_branch**: <branch>      ← worktree 브랜치
+- **agent_id**: <agent-id>           ← returned by Agent tool
+- **worktree_path**: <path>          ← worktree directory
+- **worktree_branch**: <branch>      ← worktree branch name
 ```
 
 ### Registry Rules
 
-1. **Agent 스폰 시**: Agent tool 반환값에서 `agentId`, `worktreePath`, `worktreeBranch`를 핸드오프에 기록
-2. **보정 사이클**: 기존 `agent_id`로 `SendMessage` 전송 — 새 Agent 스폰 금지
-3. **완료 시**: 상태를 `완료`로 변경, agent 필드는 참조용으로 유지
-4. **세션 재시작 시**: `agent_id`가 있는 `진행 중` 태스크는 `SendMessage`로 재개 시도
+1. **On spawn**: Record `agentId`, `worktreePath`, `worktreeBranch` from Agent tool return value into handoff
+2. **Correction cycle**: Send correction via `SendMessage` to existing `agent_id` — never spawn a new agent
+3. **On completion**: Update status to `done`, keep agent fields for reference
+4. **On session restart**: Attempt `SendMessage` to resume `in-progress` tasks that have `agent_id`
 
 ## Multi-Track Distribution
 
-독립적인(depends_on이 없거나 충족된) 태스크는 **병렬 분배** 가능.
+Tasks with no unmet `depends_on` can be **distributed in parallel**.
 
-### Scope Validation (비중복 검증)
+### Scope Validation (non-overlap check)
 
-병렬 분배 전 반드시 스코프 충돌을 확인:
+Before parallel distribution, verify no scope conflicts:
 
-1. **파일 범위 추정**: 각 태스크의 `할 것` 설명에서 수정 대상 파일/디렉토리 추출
-2. **중복 검출**: 동일 파일이 2개 이상 태스크에 포함되면 **직렬화**
-3. **디렉토리 레벨 충돌**: 같은 디렉토리 내 파일을 다루는 태스크는 주의 (경고)
-4. **안전한 병렬**: 서로 다른 모듈/디렉토리를 다루는 태스크만 병렬 실행
+1. **Estimate file scope**: Extract target files/directories from each task's description
+2. **Detect overlap**: If the same file appears in 2+ tasks → **serialize** them
+3. **Directory-level conflict**: Tasks touching the same directory → warn
+4. **Safe parallel**: Only tasks touching different modules/directories run in parallel
 
 ### Parallel Spawn
 
-```
-단일 메시지에서 여러 Agent tool 호출:
+Issue multiple Agent tool calls in a single message:
 
-Agent(task-A, isolation: worktree, subagent_type: consensus-loop:implementer)
-Agent(task-B, isolation: worktree, subagent_type: consensus-loop:implementer)
+```json
+// Agent tool call 1
+{
+  "prompt": "[task-A context + handoff section + done-criteria]",
+  "subagent_type": "consensus-loop:implementer",
+  "isolation": "worktree",
+  "description": "implement task-A"
+}
+
+// Agent tool call 2 (same message)
+{
+  "prompt": "[task-B context + handoff section + done-criteria]",
+  "subagent_type": "consensus-loop:implementer",
+  "isolation": "worktree",
+  "description": "implement task-B"
+}
 ```
 
-- 각 에이전트는 독립 worktree에서 실행
-- 반환 시 각각의 `agentId`를 핸드오프에 기록
-- 최대 동시 3개 (Rate Limit 방지)
+- Each agent runs in an isolated worktree
+- Record each `agentId` in handoff on return
+- Maximum 3 concurrent agents (rate limit prevention)
 
 ## Task Distribution (Single Track)
 
-단일 태스크 분배:
+Single task distribution:
 
 1. Extract from handoff: task ID, status, depends_on, blocks, background
 2. Gather required context files:
@@ -90,8 +107,8 @@ Agent(task-B, isolation: worktree, subagent_type: consensus-loop:implementer)
    - Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
 3. Compose worker prompt with task context
 4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "consensus-loop:implementer"`
-5. **Record agent info**: `agentId`, `worktreePath`, `worktreeBranch` → 핸드오프에 기록
-6. Update handoff status: `미착수` → `진행 중`
+5. **Record agent info**: `agentId`, `worktreePath`, `worktreeBranch` → handoff
+6. Update handoff status: `not-started` → `in-progress`
 
 ## Result Verification
 
@@ -104,13 +121,13 @@ When worker completes:
 
 ## Correction Cycle (SendMessage)
 
-`[pending_tag]` 반려 시 — **기존 에이전트에 SendMessage로 보정 지시**:
+On `[pending_tag]` rejection — **send correction instructions to existing agent via SendMessage**:
 
-### 절차
+### Procedure
 
-1. 핸드오프에서 해당 태스크의 `agent_id` 확인
-2. gpt.md (respond file)에서 반려 코드 + 근거 읽기
-3. 보정 프롬프트 구성:
+1. Look up `agent_id` for the task in handoff
+2. Read rejection codes + rationale from gpt.md (respond file)
+3. Compose correction prompt:
    ```
    SendMessage(to: "<agent_id>") {
      ## Correction Round: [task-id]
@@ -118,33 +135,34 @@ When worker completes:
      ### Instructions: ...
    }
    ```
-4. 핸드오프 상태: `감사 중` → `보정 중`
-5. 에이전트가 보정 후 재제출 → 다시 감사 루프
+4. Update handoff status: `auditing` → `correcting`
+5. Agent fixes and resubmits → re-enters audit loop
 
-### 보정 판단 기준
+### Correction Decision Matrix
 
-| 반려 유형 | 조치 |
-|-----------|------|
-| CQ (lint/type) | SendMessage — 동일 에이전트, 경미한 수정 |
-| T (테스트 실패) | SendMessage — 동일 에이전트 |
-| CC (불일치) | SendMessage — 동일 에이전트, 증거 재작성 |
-| security/regression | 사용자 에스컬레이션 — 위험도 높음 |
-| 3회 이상 반복 반려 | 사용자 에스컬레이션 — 접근 방식 재검토 필요 |
+| Rejection Type | Action |
+|----------------|--------|
+| CQ (lint/type) | SendMessage — same agent, minor fix |
+| T (test failure) | SendMessage — same agent |
+| CC (mismatch) | SendMessage — same agent, rewrite evidence |
+| security/regression | Escalate to user — high risk |
+| 3+ repeated rejections | Escalate to user — approach needs rethinking |
 
-### SendMessage 불가 시
+### When SendMessage Fails
 
-에이전트가 종료되었거나 응답 없는 경우:
-1. 새 Agent tool로 implementer 스폰 (worktree isolation)
-2. 프롬프트에 이전 반려 코드 + 기존 worktree 참조 경로 포함
-3. 핸드오프의 `agent_id` 갱신
+If the agent has terminated or is unresponsive:
+1. Spawn a new implementer via Agent tool (worktree isolation)
+2. Include previous rejection codes + existing worktree reference path in prompt
+3. Update `agent_id` in handoff
 
 ## Retrospective & Merge
 
 After `[agree_tag]` and worker WIP commit:
 
-1. **Retrospective protocol** activates automatically (`retro-marker.json` → `retro_pending: true`)
+1. **Retrospective trigger**: `retro-marker.json` is automatically set to `retro_pending: true`
    - `session-gate.mjs` blocks Bash/Agent until retrospective completes
    - Only Read/Write/Edit/Glob/Grep/TodoWrite are allowed during retrospective
+   - For worktree sub-agents: `subagent-stop.mjs` marks as `deferred_to_orchestrator` → orchestrator performs the retrospective
 2. **Perform retrospective** (see `templates/references/${locale}/retro-questions.md`):
    - What went well
    - What was problematic
@@ -181,7 +199,7 @@ If blocked → skip → select next unblocked task.
 - Do NOT hold worker context in your window — read from files
 - Do NOT skip dependency checks — blocked tasks will fail
 - Do NOT distribute overlapping scopes in parallel — file conflicts will occur
-- Do NOT exceed 3 concurrent agents — Rate Limit 위험
+- Do NOT exceed 3 concurrent agents — rate limit risk
 - Do NOT retry the same approach 3+ times — escalate to user
 - Do NOT hardcode file paths — read from config.json
 - Do NOT skip retrospective — session-gate blocks commits until retrospective completes

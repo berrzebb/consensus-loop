@@ -1,6 +1,6 @@
 ---
 name: consensus-loop:merge
-description: Squash-merge the current worktree branch into the target branch with a structured commit message. Use after consensus-loop:verify passes and audit reaches consensus.
+description: "Squash-merge a worktree branch into the target branch with a structured commit message. Use after audit consensus and retrospective completion."
 argument-hint: "[target-branch]"
 disable-model-invocation: true
 context: fork
@@ -17,8 +17,6 @@ This skill is invoked by the **orchestrator** after:
 1. Implementer's `[agree_tag]` consensus reached
 2. Implementer's WIP commit completed
 3. **Retrospective protocol completed** (session-gate released via `session-self-improvement-complete`)
-
-Do NOT run this skill if retrospective is still pending — `session-gate.mjs` will block git commands.
 
 ## Current Context
 
@@ -38,15 +36,25 @@ Follow phases in order. Do NOT skip phases.
 1. **Verify worktree**: `git rev-parse --git-dir` must contain `/worktrees/`. If not → stop:
    > "This skill must be run from inside a git worktree."
 
-2. **Identify current branch**: `git branch --show-current`
+2. **Verify retrospective complete**: Check `.claude/retro-marker.json` in the repo root:
+   ```bash
+   git -C "$(git rev-parse --git-common-dir)/.." cat-file -e HEAD:.claude/retro-marker.json 2>/dev/null || cat "$(git rev-parse --git-common-dir)/../.claude/retro-marker.json" 2>/dev/null
+   ```
+   If `retro_pending` is `true` → stop:
+   > "Retrospective not completed. Run retrospective first, then `session-self-improvement-complete`."
 
-3. **Resolve target branch**:
+3. **Identify current branch**: `git branch --show-current`
+
+4. **Resolve target branch**:
    - If `$ARGUMENTS` provided → use as target
    - Otherwise → detect `main` or `master`
 
-4. **Find original repo**: `git rev-parse --git-common-dir` → derive original repo root
+5. **Find original repo root**:
+   ```bash
+   ORIGINAL_ROOT="$(git rev-parse --git-common-dir)/.."
+   ```
 
-5. **Clean working tree**: `git status --porcelain` must be empty. If not → stop:
+6. **Clean working tree**: `git status --porcelain` must be empty. If not → stop:
    > "Uncommitted changes found. Commit or stash first."
 
 ---
@@ -108,22 +116,19 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
 
 ### Phase 4: Execute Merge
 
-1. **Switch to original repo**:
+All commands use absolute paths or `git -C` — shell state does not persist between commands.
+
+1. **Squash merge** (from original repo root):
    ```bash
-   cd <original_repo_root>
+   git -C "${ORIGINAL_ROOT}" merge --squash <worktree_branch>
    ```
 
-2. **Squash merge**:
+2. **Commit with generated message**:
    ```bash
-   git merge --squash <worktree_branch>
+   git -C "${ORIGINAL_ROOT}" commit -m "<generated_message>"
    ```
 
-3. **Commit with generated message**:
-   ```bash
-   git commit -m "<generated_message>"
-   ```
-
-4. **Report result**:
+3. **Report result to orchestrator**:
    ```markdown
    ## Merge Complete
 
@@ -132,36 +137,28 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
    - Files changed: M
    - Commit: <short_sha> <first_line>
 
-   The worktree branch is now merged. You can remove the worktree with:
-   ```bash
-   git worktree remove <worktree_path>
-   ```
+   Worktree can be removed with:
+   `git worktree remove <worktree_path>`
    ```
 
 ---
 
-### Phase 5: Cleanup (optional)
+### Phase 5: Cleanup
 
-Ask the user:
+Report to orchestrator with cleanup options:
 
 ```markdown
-**Worktree merged successfully. Clean up?**
-
-1. **Remove worktree** — delete the worktree directory and branch
-2. **Keep worktree** — leave for reference
+**Worktree merged. Cleanup options:**
+1. `git worktree remove <worktree_path> && git branch -d <worktree_branch>`
+2. Keep worktree for reference
 ```
 
-If remove:
-```bash
-git worktree remove <worktree_path>
-git branch -d <worktree_branch>
-```
+The orchestrator decides — this skill does not remove worktrees autonomously.
 
 ---
 
-## Commit Message Examples
+## Commit Message Example
 
-### Single feature:
 ```
 feat(bus): add event replay port for SSE reconnection
 
@@ -177,27 +174,10 @@ Redis uses XRANGE.
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
 ```
 
-### Mixed changes:
-```
-feat(fe): unified input bar + tool choice mode
-
-### Features
-- ChatPromptBar redesign: [+] [Tool Choice] [Tools N] [@] [Model] [Send]
-- MentionPicker: 3-column search (Agents | Tools | Workflows)
-- ToolChoiceToggle: Auto/Manual/None with ⌘P shortcut
-
-### Fixes
-- G-2: team switch query invalidation (cross-tenant leakage)
-
-### Tests
-- 15 new component tests, all passing
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-```
-
 ## Exceptions
 
 - Do NOT merge if `git status --porcelain` shows uncommitted changes
 - Do NOT force-push after merge
-- Do NOT delete the worktree without user confirmation
+- Do NOT delete the worktree without orchestrator decision
 - Do NOT merge if `consensus-loop:verify` has unresolved failures
+- Do NOT merge if retrospective is pending (`retro_pending: true`)

@@ -289,8 +289,8 @@ if (resumeActions.length > 0) {
 }
 
 // ── 5. Context Reinforcement ────────────────────────────────
-// 컨텍스트 압축 후에도 핵심 프로토콜 규칙이 유지되도록 매 세션 시작 시 재주입.
-// AI-GUIDE.md의 "절대 규칙" 섹션을 동적으로 읽어서 주입 (Policy as Data).
+// Re-inject core protocol rules every session start so they survive context compression.
+// Dynamically reads the "Absolute Rules" section from AI-GUIDE.md (Policy as Data).
 const locale = cfg.plugin?.locale ?? "en";
 const guideDir = (() => {
   const pr = process.env.CLAUDE_PLUGIN_ROOT ?? __dirname;
@@ -306,7 +306,6 @@ const guideDir = (() => {
 if (guideDir) {
   try {
     const guideContent = readFileSync(guideDir, "utf8");
-    // "## 절대 규칙" 또는 "## Absolute Rules" 섹션 추출
     const sectionMatch = guideContent.match(
       /^(## (?:절대 규칙|Absolute Rules)\s*\n(?:(?!^## ).+\n)*)/m
     );
@@ -314,7 +313,7 @@ if (guideDir) {
       const rules = sectionMatch[1].trim();
       context += `\n<CONTEXT-REINFORCEMENT>\n`;
       context += `${rules}\n`;
-      context += `\n증거 제출 전 /consensus-loop:verify 필수. 자기 승격(${agreeTag}) 절대 금지.\n`;
+      context += `\nRun /consensus-loop:verify before evidence submission. Self-promotion (${agreeTag}) is strictly forbidden.\n`;
       context += `</CONTEXT-REINFORCEMENT>\n`;
     }
   } catch { /* AI-GUIDE read error — non-fatal */ }

@@ -10,7 +10,7 @@
 
 ## Code Modification Rules
 
-- Modifications must respect `SOLID/YAGNI/DRY/KISS/LoD` within current scope
+- Modifications must respect design principles within current scope
 - Detailed principles → `references/{{LOCALE}}/principles.md`
 
 ## Verification Order
