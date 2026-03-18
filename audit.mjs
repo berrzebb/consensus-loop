@@ -10,6 +10,7 @@ import {
   SEC, t, escapeRe,
   triggerInner, agreeInner, pendingInner, STATUS_TAG_RE,
   findWatchFile, extractStatusFromLine, readSection,
+  resolvePluginPath,
 } from "./context.mjs";
 
 /** Append audit-completed timestamp to gpt.md (idempotent). */
@@ -26,7 +27,7 @@ function stampAuditCompleted(path) {
   writeFileSync(path, content, "utf8");
 }
 
-const promptTemplatePath = resolve(HOOKS_DIR, plugin.audit_prompt);
+const promptTemplatePath = resolvePluginPath(plugin.audit_prompt);
 
 // Lazy-initialized in main() — avoid dirname(null) crash at module load time.
 let claudePath = null;

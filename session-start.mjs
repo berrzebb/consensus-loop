@@ -33,24 +33,26 @@ const configPath = (() => {
   return existsSync(local) ? local : null;
 })();
 
-// ── config.json 미존재 → examples에서 자동 복사 + 커스터마이즈 안내 ──
+// ── config.json 미존재 → project dir에 자동 복사 + 커스터마이즈 안내 ──
 if (!configPath) {
+  const projectConfigDir = resolve(REPO_ROOT, ".claude", "consensus-loop");
   const exampleConfig = resolve(pluginRoot, "examples", "config.example.json");
-  const configDest = resolve(pluginRoot, "config.json");
+  const configDest = resolve(projectConfigDir, "config.json");
   const exampleTemplates = resolve(pluginRoot, "examples", "templates");
-  const templatesDest = resolve(pluginRoot, "templates");
+  const templatesDest = resolve(projectConfigDir, "templates");
 
   const autoCopied = [];
 
-  // config.json 자동 복사
+  // config.json → project directory (survives plugin updates)
   if (existsSync(exampleConfig)) {
     try {
+      mkdirSync(projectConfigDir, { recursive: true });
       cpSync(exampleConfig, configDest);
       autoCopied.push("config.json");
     } catch { /* write permission error */ }
   }
 
-  // templates/ 자동 복사 (references 정책 파일 포함)
+  // templates/ → project directory (policy files persist across updates)
   if (!existsSync(templatesDest) && existsSync(exampleTemplates)) {
     try {
       cpSync(exampleTemplates, templatesDest, { recursive: true });
@@ -63,7 +65,8 @@ if (!configPath) {
       `[consensus-loop — First-Run Setup Complete]`,
       ``,
       `Auto-copied: ${autoCopied.join(", ")}`,
-      `Location: ${pluginRoot}`,
+      `Location: ${projectConfigDir}`,
+      `(Project-scoped — safe across plugin updates)`,
       ``,
       `Customize for your project:`,
       `- config.json → consensus.watch_file, trigger_tag/agree_tag/pending_tag, quality_rules`,

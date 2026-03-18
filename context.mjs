@@ -48,22 +48,30 @@ export const REPO_ROOT = resolveRepoRoot();
 
 // ── Config ────────────────────────────────────────────────
 
+/** Project-scoped config directory — survives plugin updates. */
+export const PROJECT_CONFIG_DIR = resolve(REPO_ROOT, ".claude", "consensus-loop");
+
 /**
  * Find config.json path.
  *
  * Priority:
- *   1. $CLAUDE_PLUGIN_ROOT/config.json — set by hooks.json; always the canonical plugin dir
- *   2. HOOKS_DIR/config.json            — fallback for direct CLI invocation
- *
- * This ensures worktree copies (which lack config.json) can still load config
- * when hooks.json has set CLAUDE_PLUGIN_ROOT to the main plugin location.
+ *   1. REPO_ROOT/.claude/consensus-loop/config.json — project-scoped (survives plugin updates)
+ *   2. $CLAUDE_PLUGIN_ROOT/config.json              — plugin dir (cleared on update)
+ *   3. HOOKS_DIR/config.json                        — legacy / direct CLI invocation
  */
 function findConfigPath() {
+  // 1. Project-scoped (persistent across plugin updates)
+  const projectConfig = resolve(PROJECT_CONFIG_DIR, "config.json");
+  if (existsSync(projectConfig)) return projectConfig;
+
+  // 2. Plugin root (set by hooks.json)
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   if (pluginRoot) {
     const p = resolve(pluginRoot, "config.json");
     if (existsSync(p)) return p;
   }
+
+  // 3. Legacy fallback
   const local = resolve(HOOKS_DIR, "config.json");
   if (existsSync(local)) return local;
   return null;
@@ -90,6 +98,25 @@ export const cfg = _configPath
   : DEFAULT_CONFIG;
 export const plugin = cfg.plugin ?? DEFAULT_CONFIG.plugin;
 export const consensus = cfg.consensus ?? DEFAULT_CONFIG.consensus;
+
+/**
+ * Resolve a plugin-relative path, checking project config dir first.
+ * This allows project-scoped templates/references to override plugin defaults.
+ *
+ * Priority: PROJECT_CONFIG_DIR → CLAUDE_PLUGIN_ROOT → HOOKS_DIR
+ */
+export function resolvePluginPath(relativePath) {
+  const projectPath = resolve(PROJECT_CONFIG_DIR, relativePath);
+  if (existsSync(projectPath)) return projectPath;
+
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  if (pluginRoot) {
+    const p = resolve(pluginRoot, relativePath);
+    if (existsSync(p)) return p;
+  }
+
+  return resolve(HOOKS_DIR, relativePath);
+}
 
 // ── Hook toggles ─────────────────────────────────────────
 const _hooksEnabled = plugin.hooks_enabled ?? {};
