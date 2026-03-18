@@ -1,0 +1,18 @@
+{
+  "name": "consensus-loop",
+  "owner": {
+    "name": "berrzebb",
+    "url": "https://github.com/berrzebb"
+  },
+  "plugins": [
+    {
+      "name": "consensus-loop",
+      "source": {
+        "source": "github",
+        "repo": "berrzebb/consensus-loop"
+      },
+      "description": "AI development loop — orchestrator distributes tasks to headless workers, independent auditor verifies, automated retrospective drives self-improvement.",
+      "version": "2.1.0"
+    }
+  ]
+}

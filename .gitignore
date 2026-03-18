@@ -21,6 +21,3 @@ hook-debug.log
 
 # Build artifacts
 *.zip
-
-# Deprecated files
-.claude-plugin/marketplace.json
