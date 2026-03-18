@@ -8,7 +8,7 @@ version: 1.0.0
 
 When submitting code changes for consensus review, write a properly structured evidence package in the watch file (path configured in `config.json` → `consensus.watch_file`).
 
-> **Important:** Tag names below (`trigger_tag`, `agree_tag`, `pending_tag`) are placeholders. Check your project's `.claude/hooks/consensus-loop/config.json` for actual values.
+> **Important:** Tag names below (`trigger_tag`, `agree_tag`, `pending_tag`) are placeholders. Check your project's `${CLAUDE_PLUGIN_ROOT}/config.json` for actual values.
 
 ## Required Structure
 
