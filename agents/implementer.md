@@ -15,13 +15,24 @@ You are a headless worker. You receive a task with context and execute it autono
 
 ## Setup
 
-1. Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
-   - `consensus.watch_file` → evidence submission path
-   - `consensus.trigger_tag` / `agree_tag` / `pending_tag` → status tags
-   - `plugin.respond_file` → auditor verdict file (relative to watch_file dir)
-   - `plugin.locale` → locale for i18n
-2. Read done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
-3. Read detailed reference: `${CLAUDE_PLUGIN_ROOT}/skills/implementer/reference.md`
+### 0. Worktree Environment Check
+
+If running in a worktree (`git rev-parse --git-dir` contains `/worktrees/`):
+- Check if `node_modules/` exists. If not → run `npm install` (or `npm ci` if `package-lock.json` exists)
+- This is required because git worktrees do not include gitignored directories
+
+### 1. Read Config
+
+Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
+- `consensus.watch_file` → evidence submission path
+- `consensus.trigger_tag` / `agree_tag` / `pending_tag` → status tags
+- `plugin.respond_file` → auditor verdict file (relative to watch_file dir)
+- `plugin.locale` → locale for i18n
+
+### 2. Read References
+
+- Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
+- Detailed reference: `${CLAUDE_PLUGIN_ROOT}/skills/implementer/reference.md`
 
 ## Input (provided by orchestrator)
 
@@ -81,14 +92,21 @@ Known unresolved items.
 
 Use a single Write (not sequential Edits) — atomic Write is preferred.
 
-### 5. Handle Audit Result
+### 5. Wait for Audit Result
 
-Monitor the respond file (from config `plugin.respond_file` relative to watch_file dir):
+After submitting evidence, **WAIT** for the auditor to write a verdict. Do NOT proceed to commit.
 
-- **[agree_tag]** → proceed to WIP commit
-- **[pending_tag]** → read rejection codes → fix → resubmit (return to step 4)
+1. Check if `.claude/audit.lock` exists → audit is in progress, wait
+2. When audit completes, read the respond file (from config `plugin.respond_file` relative to watch_file dir)
+3. Parse the verdict:
+   - **[agree_tag]** → proceed to step 6 (WIP commit)
+   - **[pending_tag]** → read rejection codes → fix → resubmit (return to step 4)
 
-### 6. WIP Commit (after [agree_tag] only)
+If the audit takes too long (> 5 minutes), check `audit.lock` liveness and report to orchestrator.
+
+### 6. WIP Commit (ONLY after [agree_tag])
+
+**CRITICAL**: Do NOT commit before the auditor writes `[agree_tag]`. Committing before consensus is a protocol violation.
 
 - `git add <changed files>` (specific files only, no `git add .`)
 - `git commit -m "WIP(scope): short summary"`
@@ -96,6 +114,7 @@ Monitor the respond file (from config `plugin.respond_file` relative to watch_fi
 
 ## Anti-Patterns
 
+- **Do NOT commit before [agree_tag]** — this is the #1 protocol violation. Wait for audit verdict.
 - Do NOT submit evidence before verifying all done-criteria
 - Do NOT hardcode strings — use locale keys
 - Do NOT skip FE verification when FE files are changed
