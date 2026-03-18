@@ -100,14 +100,27 @@ From `dependency_graph` and execution-order dependencies:
 
 Output: Cross-Track Connection summary table
 
-## Output
+## Output Location
+
+RTM files are saved at the root of `consensus.planning_dirs` (from config), alongside `execution-order.md`:
+
+```
+{planning_dir}/rtm-{domain}.md          ← per-track RTM (3 matrices)
+{planning_dir}/cross-track-connections.md ← cross-track import chain audit
+```
+
+Example: `docs/ko/design/improved/rtm-evaluation-pipeline.md`
+
+**Write via single Write tool** (not sequential Edits) — same atomic pattern as evidence submission.
+
+## Output Format
 
 Produce all outputs in the format defined in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/traceability-matrix.md`:
 
 1. **Forward RTM** — one table per track (primary output for implementer distribution)
 2. **Backward RTM** — one table per track (for auditor verification)
 3. **Bidirectional RTM** — one table per track (for orchestrator gap analysis)
-4. **Cross-Track Connections** — one summary table
+4. **Cross-Track Connections** — one summary at planning_dir root
 
 ## Output Rules
 
