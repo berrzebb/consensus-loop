@@ -71,6 +71,13 @@ export const cfg = JSON.parse(readFileSync(findConfigPath(), "utf8"));
 export const plugin = cfg.plugin;
 export const consensus = cfg.consensus;
 
+// ── Hook toggles ─────────────────────────────────────────
+const _hooksEnabled = plugin.hooks_enabled ?? {};
+/** 훅 활성화 여부 확인. config에 없으면 기본값 true. */
+export function isHookEnabled(hookName) {
+  return _hooksEnabled[hookName] ?? true;
+}
+
 // ── Locale 검증 (path traversal 방지) ─────────────────────
 const ALLOWED_LOCALES = new Set(["en", "ko"]);
 const rawLocale = plugin.locale ?? "en";

@@ -13,7 +13,15 @@
     "fix_prompt": "templates/fix-prompt.md",
     "respond_file": "gpt.md",
     "retro_script": "retrospective.mjs",
-    "retro_prompt": "templates/retro-prompt.md"
+    "retro_prompt": "templates/retro-prompt.md",
+
+    "_hooks_enabled_readme": "Toggle individual hook behaviors. All default to true if omitted.",
+    "hooks_enabled": {
+      "audit": true,
+      "session_gate": true,
+      "quality_rules": true,
+      "pre_compact": true
+    }
   },
 
   "consensus": {

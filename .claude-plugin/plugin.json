@@ -1,6 +1,6 @@
 {
   "name": "consensus-loop",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "AI development loop — orchestrator distributes tasks to headless workers, independent auditor verifies, automated retrospective drives self-improvement. Hooks + Skills + References in one plugin.",
   "author": {
     "name": "berrzebb",

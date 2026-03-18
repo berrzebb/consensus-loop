@@ -13,22 +13,26 @@ consensus-loop is a multi-agent protocol with 4 roles in a cycle:
 | **implementer** | Implement in worktree + test + submit evidence + WIP commit | worktree (Sonnet) |
 | **auditor** | Independent evidence verification → agree/reject verdict | separate process (GPT/Codex) |
 
+> **Note**: The authoritative implementer spec is `agents/implementer.md`. The `consensus-loop:implementer` skill is a legacy entry point.
+
 ## Full Cycle
 
 ```
 planner ─── Track definition + execution plan adjustment
     ↓
-orchestrator ─── Select WB from execution-order → distribute to implementer
-    ↓
-┌─── implementer (worktree) ──────────────────────────┐
-│  1. Implement code + tests                           │
-│  2. consensus-loop:verify (CQ/T/CC/CL/S/I checks)   │
-│  3. Submit evidence → watch_file with [trigger_tag]  │
-│  4. Audit starts automatically (async)               │
-│  5a. [agree_tag] → WIP commit                        │
-│  5b. [pending_tag] → fix → return to step 3          │
-└──────────────────────────────────────────────────────┘
-    ↓ (consensus + WIP commit)
+orchestrator ─── Select WB from execution-order → scope validation → parallel distribute
+    ↓                                              (non-overlapping files only)
+┌─── Track A (worktree) ──────┐  ┌─── Track B (worktree) ──────┐
+│  implementer: implement+test │  │  implementer: implement+test │
+│  → consensus-loop:verify     │  │  → consensus-loop:verify     │
+│    (CQ/T/CC/CL/S/I/FV)      │  │    (CQ/T/CC/CL/S/I/FV)      │
+│  → submit evidence           │  │  → submit evidence           │
+│  → audit (async)             │  │  → audit (async)             │
+│  [pending_tag] → SendMessage │  │  [agree_tag] → WIP commit    │
+│  → correction → resubmit    │  │                               │
+│  [agree_tag] → WIP commit   │  │                               │
+└──────────────────────────────┘  └──────────────────────────────┘
+    ↓ (all tracks: agree_tag + WIP commit)
 Retrospective protocol (session-gate blocks Bash/Agent)
     → what went well / what went wrong / memory update
     → "session-self-improvement-complete" → gate release
@@ -40,29 +44,38 @@ orchestrator: write session handoff → select next WB → loop
 
 ## Evidence Package Format
 
-Write to the watch_file (typically `docs/feedback/claude.md`):
+Write to the watch_file (typically `docs/feedback/claude.md`) using **Write (full replacement)**:
 
 ```markdown
 ## [trigger_tag] Task Title
 
 ### Claim
-Describe what you did, specifically.
+Describe what you did, specifically. Changes not mentioned in the claim must not appear in the diff.
 
 ### Changed Files
-- `path/to/file.ts` — description of changes
+
+**Code**
+- `src/path/to/file.ts` — description of changes
+
+**Tests**
+- `tests/path/to/file.test.ts` — test additions/modifications
 
 ### Test Command
 ```bash
 npx vitest run tests/specific-file.test.ts
+npx eslint src/path/to/file.ts
+npx tsc --noEmit
 ```
 
 ### Test Result
-- `1 file / 10 tests passed`
-- `npx eslint path/to/file.ts`: passed
-- `npx tsc --noEmit`: passed
+```
+Paste actual terminal output here verbatim.
+No summaries — the auditor must be able to verify the raw output.
+```
 
 ### Residual Risk
-Known unresolved items.
+Known unresolved items. If exploitable by an attacker, it is a fix target, not residual risk.
+Write "None" if there are no known unresolved items.
 ```
 
 ## Absolute Rules
@@ -72,6 +85,41 @@ Known unresolved items.
 3. **Test Commands must be re-runnable** — the auditor copies and executes them verbatim. No glob patterns.
 4. **Every changed file must pass eslint individually** — one failure means rejection.
 5. **Never modify design docs** — `docs/` design documents are read-only.
+6. **Exactly 1 evidence section per submission** — do not submit multiple evidence sections simultaneously.
+7. **Changed Files must match the actual diff** — files in the diff but not in the evidence (or vice versa) trigger `scope-mismatch` rejection.
+
+## Verification Sequence (consensus-loop:verify)
+
+**Always** run `/consensus-loop:verify` before submitting evidence. It executes 7 categories sequentially:
+
+| # | Category | Codes | Checks | Pass Condition |
+|---|----------|-------|--------|----------------|
+| 1 | Code Quality | CQ-1~CQ-4 | Per-file eslint + tsc + no forbidden patterns | All changed files pass lint/tsc |
+| 2 | Test | T-1~T-4 | Test execution + direct test per claim + no regressions | Evidence test commands pass |
+| 3 | Claim-Code Consistency | CC-1~CC-3 | Claim matches code behavior + file list matches diff | No claim ↔ diff mismatch |
+| 4 | Cross-Layer Contract | CL-1~CL-3 | BE→FE documented + new interface has consumer | Cross-layer contracts traceable |
+| 5 | Security | S-1~S-3 | New inputs validated + endpoints auth-guarded + sensitive data not exposed | No OWASP violations |
+| 6 | i18n | I-1~I-2 | User strings use locale keys + keys present in ALL locales | No hardcoded strings |
+| 7 | Frontend Verification | FV-1~FV-5 | Page loads + DOM elements + no console errors + build succeeds | Only runs when FE files changed |
+
+Output: Integrated PASS/FAIL table per category. **All must PASS before submission**.
+
+## Rejection Codes
+
+Full list of rejection codes used by the auditor:
+
+| Code | Severity | Meaning | Trigger |
+|------|----------|---------|---------|
+| `needs-evidence` | major/minor | Evidence package missing or weak | Core claim unsupported / partial gaps |
+| `scope-mismatch` | **major** | Claim vs code scope mismatch | Files in diff not in evidence or vice versa |
+| `lint-gap` | **major** | Lint failed | CQ-1/CQ-2 fails. Must include `file:L{line}` + error |
+| `test-gap` | **major** | Tests missing/insufficient | T-1 fails or T-2 not met (no direct test) |
+| `claim-drift` | **minor** | Evidence description doesn't match code behavior | CC-1 fails (evidence says X, code does Y) |
+| `principle-drift` | major/minor | SOLID/YAGNI/DRY/KISS/LoD violation | Structural regression / minor principle violation |
+| `security-drift` | **critical** | OWASP TOP 10 violation | S-1/S-2/S-3 fails. Must include attack scenario |
+| `regression` | **major** | Existing test broke | T-3 fails (previously passing test now fails) |
+| `i18n-gap` | **minor** | Hardcoded user-facing strings | I-1/I-2 fails (strings not using locale keys) |
+| `contract-gap` | **major** | Cross-layer contract broken | CL-1/CL-2/CL-3 fails (interface without consumer) |
 
 ## Async Audit Behavior
 
@@ -86,29 +134,47 @@ When you submit evidence (save watch_file with `[trigger_tag]`):
    - Report results to user if any
 5. When the audit completes, `audit.lock` is deleted and results auto-sync
 
-## Responding to [pending_tag] Rejections
+## [pending_tag] Correction Cycle
 
-When the auditor rejects, `respond.mjs` reports the correction items. Common rejection codes:
+When the auditor rejects, `respond.mjs` delivers correction items.
 
-| Code | Meaning |
-|------|---------|
-| `test-gap [major]` | Tests don't sufficiently verify the claim |
-| `claim-drift [minor]` | Evidence description doesn't match actual code |
-| `lint-gap [major]` | Changed file failed eslint |
-| `scope-mismatch [major]` | Claim scope doesn't match actual changes |
-
-Correction procedure:
+### Correction Procedure (Single Agent)
 1. Check the rejection's specific locations (file:line)
 2. Fix the code
 3. Update the same evidence package and resubmit (keep `[trigger_tag]`)
 
-## Retrospective Protocol
+### Correction Procedure (Multi-Agent — orchestrator → implementer)
 
-Retrospective is **mandatory in all contexts** after consensus is reached. The session-gate blocks Bash/Agent, making it impossible to skip.
+The orchestrator **does not spawn a new agent** for corrections. It sends correction instructions to the existing agent's `agent_id` via `SendMessage`:
 
-> **Technical note**: Subagents (implementer) pass through session-gate and cannot perform retrospective directly. In this case, `deferred_to_orchestrator` is set and the orchestrator performs it on their behalf. This is not an exception to the principle — it is a technical limitation requiring delegation.
+- **major rejection** (test-gap, scope-mismatch, lint-gap) → SendMessage with specific correction instructions
+- **minor rejection** (claim-drift) → SendMessage requesting evidence description update
+- **critical rejection** (security-drift) → orchestrator intervenes directly to fix
 
-Retrospective procedure:
+After correction, the implementer resubmits evidence and the audit restarts.
+
+## Session Gate & Retrospective Protocol
+
+### Session Gate Behavior
+
+`session-gate.mjs` (PreToolUse hook) restricts tools until retrospective is complete:
+
+- **Blocked**: Bash, Agent, Git-related tools
+- **Allowed**: Read, Write, Edit, Glob, Grep, TodoWrite (for memory work)
+- **Session-aware**: only blocks the session that completed the audit (other sessions unaffected)
+- **Fail-open**: errors pass through silently (never locks the system)
+
+### Deferred Retrospective
+
+Subagents (implementer) pass through session-gate and cannot perform retrospective directly:
+
+1. `subagent-stop.mjs` detects implementer completion
+2. Sets `deferred_to_orchestrator` flag → recorded in retro-marker
+3. Orchestrator performs retrospective on their behalf
+
+This is not an exception to the principle — it is a technical limitation requiring delegation.
+
+### Retrospective Procedure
 
 1. Bash/Agent blocked (only Read/Write/Edit allowed)
 2. **Immediately** present the retrospective (do not wait for user instruction):
@@ -132,6 +198,7 @@ Audit criteria are managed as files, not code:
 | `templates/references/{locale}/test-checklist.md` | Test sufficiency criteria |
 | `templates/references/{locale}/output-format.md` | Audit result format rules |
 | `templates/references/{locale}/evidence-format.md` | Evidence package format |
+| `templates/references/{locale}/done-criteria.md` | 21 done criteria (CQ/T/CC/CL/S/I/FV) |
 | `templates/references/{locale}/principles.md` | Code quality principles |
 
 Reading these files helps you understand how the auditor will judge your work.

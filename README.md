@@ -1,4 +1,4 @@
-# consensus-loop v2.0.0
+# consensus-loop v2.1.0
 
 > **Claude Code hook plugin** — tag-based two-party consensus protocol between Claude (implementer) and an external AI auditor (GPT/Codex), with HITL retrospective gates and multi-agent orchestration.
 
@@ -37,6 +37,10 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Plugin skills** | 6 slash-command skills: `consensus-loop:orchestrator`, `consensus-loop:implementer`, `consensus-loop:verify`, `consensus-loop:merge`, `consensus-loop:planner`, `consensus-loop:guide` |
 | **CLI commands** | 2 slash commands: `/consensus-audit` (manual audit), `/consensus-status` (current state) |
 | **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
+| **Hook toggles** | `plugin.hooks_enabled` — individually disable audit, session_gate, quality_rules, pre_compact |
+| **PreCompact snapshot** | Saves audit state (retro-marker, audit.lock, last item) before context compaction |
+| **Resume detection** | SessionStart auto-detects 7 interrupted states → provides specific resume instructions |
+| **Context reinforcement** | SessionStart re-injects AI-GUIDE "absolute rules" via `<CONTEXT-REINFORCEMENT>` tag |
 
 ---
 
@@ -82,9 +86,11 @@ consensus-loop/
 ├── respond.mjs            ← Syncs gpt.md ↔ claude.md; promotes/demotes tags
 ├── retrospective.mjs      ← Sets retro marker after all items agreed
 ├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
-├── session-start.mjs      ← SessionStart hook: handoff sync + context injection
+├── pre-compact.mjs        ← PreCompact hook: saves audit state before context compaction
+├── session-start.mjs      ← SessionStart hook: handoff sync + resume detection + context reinforcement
 ├── session-stop.mjs       ← Stop hook: handoff sync + auto-commit
 ├── subagent-stop.mjs      ← SubagentStop hook: detects worker completion + deferred retro
+├── CLAUDE.md              ← AI agent context (module map, gotcha, config reference)
 ├── handoff-writer.mjs     ← Handoff sync between repo and Claude memory (portable)
 ├── cli-runner.mjs         ← Cross-platform binary resolver (sync + async spawn)
 ├── i18n.mjs               ← Standalone locale helper (fallback for non-context imports)
@@ -122,9 +128,10 @@ consensus-loop/
 │           └── en/        ← Example English policy files (9 × .example.md)
 │
 └── (auto-generated — gitignored, written to REPO_ROOT/.claude/)
-    ├── audit.lock         ← Background audit PID + TTL (prevents concurrent runs)
-    ├── audit-bg.log       ← Real-time streaming log from background audit
-    └── audit-debounce.ts  ← Debounce timestamp for consecutive edits
+    ├── audit.lock              ← Background audit PID + TTL (prevents concurrent runs)
+    ├── audit-bg.log            ← Real-time streaming log from background audit
+    ├── audit-debounce.ts       ← Debounce timestamp for consecutive edits
+    └── compaction-snapshot.json ← PreCompact state snapshot (restored on SessionStart)
     (plugin-local — gitignored within plugin dir)
     ├── config.json
     ├── .session-state/    ← retro-marker.json (session gate state)
@@ -247,7 +254,7 @@ Install from the GitHub repository:
 claude plugin add berrzebb/consensus-loop
 ```
 
-This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`) and makes skills available as slash commands.
+This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and makes skills available as slash commands.
 
 ### Option B: Local Development (`--plugin-dir`)
 
@@ -284,6 +291,9 @@ cp -r consensus-loop  <your-repo>/.claude/hooks/
     ],
     "PostToolUse": [
       { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs", "timeout": 30000 }] }
+    ],
+    "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/pre-compact.mjs", "timeout": 5000 }] }
     ],
     "Stop": [
       { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-stop.mjs", "async": true, "timeout": 120 }] }
@@ -339,7 +349,13 @@ This ensures the AI agent understands the evidence format, tag rules, async audi
     "retro_prompt":    "templates/retro-prompt.md",
     "ack_file":        "ack.timestamp",
     "session_file":    "session.id",
-    "debug_log":       "debug.log"
+    "debug_log":       "debug.log",
+    "hooks_enabled": {                       // Toggle individual hooks (all default true)
+      "audit": true,                         // Audit trigger on watch_file edit
+      "session_gate": true,                  // Retro enforcement gate
+      "quality_rules": true,                 // Per-file quality checks
+      "pre_compact": true                    // State snapshot before compaction
+    }
   },
   "consensus": {
     "watch_file":      "feedback/claude.md",

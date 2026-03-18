@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync, spawn, execFileSync } from "node:child_process";
 import {
   HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus as c,
-  findWatchFile, findRespondFile, t,
+  findWatchFile, findRespondFile, t, isHookEnabled,
 } from "./context.mjs";
 
 const debugLog = resolve(HOOKS_DIR, plugin.debug_log);
@@ -298,12 +298,12 @@ async function main() {
   const normalized = filePath.replace(/\\/g, "/").toLowerCase();
 
   // (C) Code quality immediate check (skip consensus watch_file)
-  if (!normalized.endsWith(c.watch_file.toLowerCase())) {
+  if (isHookEnabled("quality_rules") && !normalized.endsWith(c.watch_file.toLowerCase())) {
     run_quality_checks(filePath);
   }
 
   // (A) Detect watch_file edit — with debounce for sequential edits
-  if (normalized.endsWith(c.watch_file.toLowerCase())) {
+  if (isHookEnabled("audit") && normalized.endsWith(c.watch_file.toLowerCase())) {
     const watchPath = find_watch_file();
     if (!watchPath) { log("EXIT: watch_file not found"); return; }
 

@@ -46,8 +46,10 @@ consensus-loop/
 ├── respond.mjs            ← claude.md ↔ gpt.md 동기화, 태그 승격/강등
 ├── retrospective.mjs      ← 합의 완료 후 회고 마커 설정
 ├── session-gate.mjs       ← PreToolUse 훅: 회고 미완료 시 Bash/커밋 차단
-├── session-start.mjs      ← SessionStart 훅: 세션 ID 할당
-├── session-stop.mjs       ← Stop 훅: 세션 종료 시 정리
+├── pre-compact.mjs        ← PreCompact 훅: 압축 전 감사 상태 스냅샷
+├── session-start.mjs      ← SessionStart 훅: 핸드오프 동기화 + resume 감지 + 규칙 재주입
+├── session-stop.mjs       ← Stop 훅: 핸드오프 동기화 + 자동 커밋
+├── CLAUDE.md              ← AI 에이전트 컨텍스트 (모듈 맵, gotcha, config 참조)
 ├── cli-runner.mjs         ← CLI 바이너리 경로 해석 (Windows + Linux)
 ├── i18n.mjs               ← 로케일 헬퍼 (standalone)
 │
@@ -69,9 +71,10 @@ consensus-loop/
 │
 └── (자동 생성 — gitignored)
     REPO_ROOT/.claude/에 생성:
-    ├── audit.lock         ← 백그라운드 감사 PID + TTL (동시 실행 방지)
-    ├── audit-bg.log       ← 실시간 감사 로그
-    └── audit-debounce.ts  ← 연속 편집 디바운스 타임스탬프
+    ├── audit.lock              ← 백그라운드 감사 PID + TTL (동시 실행 방지)
+    ├── audit-bg.log            ← 실시간 감사 로그
+    ├── audit-debounce.ts       ← 연속 편집 디바운스 타임스탬프
+    └── compaction-snapshot.json ← PreCompact 상태 스냅샷 (SessionStart에서 복원)
     플러그인 로컬:
     ├── config.json
     ├── .session-state/    ← retro-marker.json (세션 게이트 상태)
@@ -162,7 +165,7 @@ audit-prompt.md (30줄)
 claude plugin add berrzebb/consensus-loop
 ```
 
-모든 훅(`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`)과 스킬이 자동 등록됩니다.
+모든 훅(`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`)과 스킬이 자동 등록됩니다.
 
 ### 방법 B: 로컬 개발 (`--plugin-dir`)
 
@@ -191,6 +194,9 @@ cp -r consensus-loop  <your-repo>/.claude/hooks/
     ],
     "PostToolUse": [
       { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs", "timeout": 30000 }] }
+    ],
+    "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/pre-compact.mjs", "timeout": 5000 }] }
     ],
     "Stop": [
       { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-stop.mjs", "async": true, "timeout": 120 }] }
@@ -228,7 +234,13 @@ references 파일을 팀 정책에 맞게 조정.
     "retro_prompt":    "templates/retro-prompt.md",
     "ack_file":        "ack.timestamp",
     "session_file":    "session.id",
-    "debug_log":       "debug.log"
+    "debug_log":       "debug.log",
+    "hooks_enabled": {                       // 개별 훅 토글 (기본값 모두 true)
+      "audit": true,                         // watch_file 편집 시 감사 트리거
+      "session_gate": true,                  // 회고 강제 게이트
+      "quality_rules": true,                 // 파일별 품질 검사
+      "pre_compact": true                    // 압축 전 상태 스냅샷
+    }
   },
   "consensus": {
     "watch_file":      "feedback/claude.md",

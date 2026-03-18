@@ -37,6 +37,17 @@ if (!marker || !marker.retro_pending) {
   process.exit(0);
 }
 
+// Hook toggle — only checked when retro is pending (no overhead on normal path)
+try {
+  const cfgPath = (() => {
+    const pr = process.env.CLAUDE_PLUGIN_ROOT;
+    if (pr) { const p = resolve(pr, "config.json"); if (existsSync(p)) return p; }
+    return resolve(__dirname, "config.json");
+  })();
+  const c = JSON.parse(readFileSync(cfgPath, "utf8"));
+  if (c.plugin?.hooks_enabled?.session_gate === false) process.exit(0);
+} catch { /* config read error — default: enabled */ }
+
 // Load i18n only when retro is pending (avoid overhead on every tool call)
 const { t } = await import("./context.mjs");
 
