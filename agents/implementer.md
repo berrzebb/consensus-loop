@@ -4,6 +4,9 @@ description: Headless worker for consensus-loop — receives task + context, imp
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: sonnet
 isolation: worktree
+skills:
+  - verify-implementation
+  - consensus-loop
 ---
 
 # Implementer Protocol
@@ -12,15 +15,13 @@ You are a headless worker. You receive a task with context and execute it autono
 
 ## Setup
 
-1. Find the consensus-loop config by searching for `config.json` in `.claude/hooks/consensus-loop/`:
-   ```bash
-   find . -path "*consensus-loop/config.json" -maxdepth 5 2>/dev/null | head -1
-   ```
+1. Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
    - `consensus.watch_file` → evidence submission path
    - `consensus.trigger_tag` / `agree_tag` / `pending_tag` → status tags
    - `plugin.respond_file` → auditor verdict file (relative to watch_file dir)
    - `plugin.locale` → locale for i18n
-2. Read done criteria from `templates/references/${locale}/done-criteria.md` (relative to consensus-loop dir)
+2. Read done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
+3. Read detailed reference: `${CLAUDE_PLUGIN_ROOT}/skills/implementer/reference.md`
 
 ## Input (provided by orchestrator)
 
@@ -38,7 +39,11 @@ You are a headless worker. You receive a task with context and execute it autono
 ### 2. Implement
 
 - Write code following project rules (`.claude/rules/`)
-- Check for hardcoded strings and type-safety issues
+- Run bundled scripts for zero-token validation:
+  ```bash
+  node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" type-safety
+  node "${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs" hardcoded
+  ```
 
 ### 3. Verify (before submitting evidence)
 

@@ -4,7 +4,7 @@
 
 Read planning directories from config:
 ```bash
-node -e "console.log(JSON.parse(require('fs').readFileSync('${CLAUDE_SKILL_DIR}/../../config.json','utf8')).consensus.planning_dirs)"
+node -e "console.log(JSON.parse(require('fs').readFileSync('${CLAUDE_PLUGIN_ROOT}/config.json','utf8')).consensus.planning_dirs)"
 ```
 
 ## Work Breakdown Template

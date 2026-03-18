@@ -10,7 +10,7 @@ allowed-tools: Read, Grep, Glob, Bash(npx *), Bash(node *), Bash(git diff *), Ba
 
 ## Purpose
 
-Runs all done-criteria checks before evidence submission. Criteria loaded from `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/done-criteria.md`. Each category maps to a verify step. Passing all checks means the evidence is ready for audit.
+Runs all done-criteria checks before evidence submission. Criteria loaded from `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`. Each category maps to a verify step. Passing all checks means the evidence is ready for audit.
 
 ## Execution Targets
 
@@ -28,7 +28,7 @@ Runs all done-criteria checks before evidence submission. Criteria loaded from `
 
 ### Step 1: Gather Context
 
-1. Read `${CLAUDE_SKILL_DIR}/../../config.json` → extract `consensus.trigger_tag`, `consensus.watch_file`
+1. Read `${CLAUDE_PLUGIN_ROOT}/config.json` → extract `consensus.trigger_tag`, `consensus.watch_file`
 2. Read the watch file (path from config) — find the section containing `trigger_tag`
 3. Parse: Claim, Changed Files, Test Command, Test Result, Residual Risk
 4. Extract the list of changed files from `### Changed Files`
@@ -45,7 +45,7 @@ for file in <changed_files>; do npx eslint "$file"; done
 npx tsc --noEmit
 
 # CQ-4: No forbidden patterns in new code
-node ${CLAUDE_SKILL_DIR}/scripts/audit-scan.mjs type-safety
+node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs type-safety
 ```
 
 Record: PASS or FAIL with file:line for each failure.
@@ -90,7 +90,7 @@ Record: PASS, FAIL, or N/A.
 ```bash
 # S-1: New input paths have validation
 # S-3: Sensitive data not in logs/responses
-node ${CLAUDE_SKILL_DIR}/scripts/audit-scan.mjs hardcoded
+node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs hardcoded
 ```
 
 For new API endpoints: check for auth guard in route handler.

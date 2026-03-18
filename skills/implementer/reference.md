@@ -17,7 +17,7 @@ Before submitting evidence, verify ALL items:
 | I-1 | Locale keys used | No hardcoded strings |
 | I-2 | ALL locales have key | Check ko.json + en.json |
 
-Full details: `${CLAUDE_SKILL_DIR}/../../templates/references/en/done-criteria.md`
+Full details: `${CLAUDE_PLUGIN_ROOT}/templates/references/en/done-criteria.md`
 
 ## Evidence Format
 
@@ -53,8 +53,8 @@ Run from skill directory:
 
 ```bash
 # Code pattern scan (0 tokens, replaces grep)
-node ${CLAUDE_SKILL_DIR}/scripts/audit-scan.mjs all
+node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs all
 
 # Add locale key to ko + en at once
-node ${CLAUDE_SKILL_DIR}/scripts/add-locale-key.mjs "key" "ko_value" "en_value"
+node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/add-locale-key.mjs "key" "ko_value" "en_value"
 ```

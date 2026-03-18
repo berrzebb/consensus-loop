@@ -10,16 +10,18 @@ allowed-tools: Read, Edit, Write, Grep, Glob, Bash(npx *), Bash(node *), Bash(gi
 
 # Implementer Protocol
 
+> **Deprecated**: This skill is a legacy entry point. The authoritative implementer definition is `agents/implementer.md` which provides `isolation: worktree`. The orchestrator should spawn the implementer via the **Agent tool**, not this skill. This skill remains for reference and its bundled scripts (`scripts/audit-scan.mjs`, `scripts/add-locale-key.mjs`).
+
 You are a headless worker. You receive a task with context and execute it autonomously.
 
 ## Setup
 
-1. Read config: `${CLAUDE_SKILL_DIR}/../../config.json`
+1. Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
    - `consensus.watch_file` → evidence submission path
    - `consensus.trigger_tag` / `agree_tag` / `pending_tag` → status tags
    - `plugin.respond_file` → auditor verdict file
    - `plugin.locale` → locale for i18n
-2. Read done criteria: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/done-criteria.md`
+2. Read done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
 3. Read detailed reference: [reference.md](reference.md)
 
 ## Input (provided by orchestrator)
@@ -40,8 +42,8 @@ You are a headless worker. You receive a task with context and execute it autono
 - Write code following project rules (`.claude/rules/`)
 - Run bundled scripts for validation (0 tokens):
   ```bash
-  node ${CLAUDE_SKILL_DIR}/scripts/audit-scan.mjs type-safety
-  node ${CLAUDE_SKILL_DIR}/scripts/audit-scan.mjs hardcoded
+  node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs type-safety
+  node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs hardcoded
   ```
 
 ### 3. Verify (before submitting evidence)
@@ -55,7 +57,7 @@ Check every done-criteria item (see [reference.md](reference.md)):
 - **S**: No new unvalidated inputs, no sensitive data exposure
 - **I**: Locale keys in ALL locale files:
   ```bash
-  node ${CLAUDE_SKILL_DIR}/scripts/add-locale-key.mjs "key" "ko_value" "en_value"
+  node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/add-locale-key.mjs "key" "ko_value" "en_value"
   ```
 
 ### 4. Submit Evidence
@@ -101,7 +103,7 @@ After `[agree_tag]` (consensus reached):
 
 ## Scripts Available
 
-All scripts are bundled with this skill at `${CLAUDE_SKILL_DIR}/scripts/`:
+All scripts are bundled with this skill at `${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/`:
 
 | Script | Purpose |
 |--------|---------|

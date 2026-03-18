@@ -1,6 +1,6 @@
 # Verify Implementation Reference
 
-Full done-criteria: read `${CLAUDE_SKILL_DIR}/../../templates/references/en/done-criteria.md`
+Full done-criteria: read `${CLAUDE_PLUGIN_ROOT}/templates/references/en/done-criteria.md`
 
 ## Quick Reference
 
@@ -8,7 +8,7 @@ Full done-criteria: read `${CLAUDE_SKILL_DIR}/../../templates/references/en/done
 |----|----------|-------|------|
 | CQ-1 | Code Quality | `npx eslint <file>` per changed file | Bash |
 | CQ-2 | Code Quality | `npx tsc --noEmit` | Bash |
-| CQ-4 | Code Quality | `node ${CLAUDE_SKILL_DIR}/scripts/audit-scan.mjs type-safety` | Bash |
+| CQ-4 | Code Quality | `node ${CLAUDE_PLUGIN_ROOT}/skills/implementer/scripts/audit-scan.mjs type-safety` | Bash |
 | T-1 | Test | Execute evidence test commands verbatim | Bash |
 | T-2 | Test | Grep for test importing changed module | Grep |
 | T-3 | Test | `npx vitest run <related>` | Bash |

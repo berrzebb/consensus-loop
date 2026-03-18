@@ -22,11 +22,11 @@ You are responsible for **defining tracks** and **adjusting execution plans**. T
 ## Input
 
 - Requirement description (from user or orchestrator)
-- Planning directories: read from `${CLAUDE_SKILL_DIR}/../../config.json` → `consensus.planning_dirs`
+- Planning directories: read from `${CLAUDE_PLUGIN_ROOT}/config.json` → `consensus.planning_dirs`
 - Existing execution order: `<planning_dir>/execution-order.md`
 - Existing work catalog: `<planning_dir>/work-catalog.md`
 - Existing gap matrix: read from repo (project-specific location)
-- Done criteria: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/done-criteria.md`
+- Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
 
 ## Output Location
 

@@ -11,7 +11,7 @@ You are the orchestrator. You do NOT implement — you distribute, verify, and d
 
 ## Setup
 
-Read config: `${CLAUDE_SKILL_DIR}/../../config.json`
+Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 - `consensus.watch_file` → evidence file path
 - `consensus.planning_dirs` → design document directories
 - `plugin.respond_file` → auditor verdict file
@@ -19,10 +19,10 @@ Read config: `${CLAUDE_SKILL_DIR}/../../config.json`
 
 ## Current State (auto-injected)
 
-- Handoff: !`node -e "const f=require('fs'),p=require('path'),c=JSON.parse(f.readFileSync('${CLAUDE_SKILL_DIR}/../../config.json','utf8')),h=c.plugin?.handoff_file??'.claude/session-handoff.md';try{console.log(f.readFileSync(h,'utf8').substring(0,2000))}catch{console.log('no handoff')}"`
+- Handoff: !`node -e "const f=require('fs'),p=require('path'),c=JSON.parse(f.readFileSync('${CLAUDE_PLUGIN_ROOT}/config.json','utf8')),h=c.plugin?.handoff_file??'.claude/session-handoff.md';try{console.log(f.readFileSync(h,'utf8').substring(0,2000))}catch{console.log('no handoff')}"`
 - Recent commits: !`git log --oneline -5 2>/dev/null`
-- Audit status: !`node -e "const f=require('fs'),p=require('path'),c=JSON.parse(f.readFileSync('${CLAUDE_SKILL_DIR}/../../config.json','utf8')),w=c.consensus.watch_file,d=p.dirname(w),r=c.plugin?.respond_file??'gpt.md',g=p.resolve(d,r);try{const l=f.readFileSync(g,'utf8').split('\n');console.log(l.find(x=>x.trim().startsWith('- '))||'no verdict')}catch{console.log('no verdict file')}"`
-- Audit lock: !`cat ${CLAUDE_SKILL_DIR}/../../audit.lock 2>/dev/null || echo "no active audit"`
+- Audit status: !`node -e "const f=require('fs'),p=require('path'),c=JSON.parse(f.readFileSync('${CLAUDE_PLUGIN_ROOT}/config.json','utf8')),w=c.consensus.watch_file,d=p.dirname(w),r=c.plugin?.respond_file??'gpt.md',g=p.resolve(d,r);try{const l=f.readFileSync(g,'utf8').split('\n');console.log(l.find(x=>x.trim().startsWith('- '))||'no verdict')}catch{console.log('no verdict file')}"`
+- Audit lock: !`cat .claude/audit.lock 2>/dev/null || echo "no active audit"`
 
 ## Session Start
 
@@ -37,8 +37,8 @@ When a task is selected:
 1. Extract from handoff: task ID, status, depends_on, blocks, background
 2. Gather required context files:
    - Design docs from `consensus.planning_dirs` in config
-   - Done criteria: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/done-criteria.md`
-   - Evidence format: `${CLAUDE_SKILL_DIR}/../../templates/references/${locale}/evidence-format.md`
+   - Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
+   - Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
 3. Compose worker prompt with task context
 4. Spawn implementer via **Agent tool** with `isolation: "worktree"` (NOT `/implementer` skill — skill does not provide worktree isolation). The agent definition is at `agents/implementer.md`.
 5. Monitor: check for audit.lock, verdict file changes, worker exit
