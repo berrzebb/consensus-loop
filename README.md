@@ -42,7 +42,7 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Resume detection** | SessionStart auto-detects 7 interrupted states → provides specific resume instructions |
 | **Context reinforcement** | SessionStart re-injects AI-GUIDE "absolute rules" via `<CONTEXT-REINFORCEMENT>` tag |
 | **Scout agent** | Read-only RTM generator — produces 3-way traceability matrix (Forward/Backward/Bidirectional) using deterministic tools |
-| **MCP tools** | 4 deterministic tools via `scripts/mcp-server.mjs`: `code_map`, `dependency_graph`, `audit_scan`, `coverage_map` |
+| **MCP tools** | 4 deterministic tools via `.mcp.json` + `scripts/mcp-server.mjs`: `code_map`, `dependency_graph`, `audit_scan`, `coverage_map` — auto-registered by plugin system |
 | **RTM (traceability)** | Requirements Traceability Matrix — scout generates, implementer updates, auditor verifies, orchestrator closes |
 | **Coverage verification** | CV-1~CV-3 done-criteria: stmt ≥ 85%, branch ≥ 75%, coverage data exists. `coverage-gap` rejection code |
 
@@ -55,6 +55,8 @@ consensus-loop/
 │
 ├── .claude-plugin/
 │   └── plugin.json        ← Plugin metadata (name, version, author)
+│
+├── .mcp.json              ← MCP server declaration (auto-registered by plugin system)
 │
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered by plugin system)

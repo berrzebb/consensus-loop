@@ -25,6 +25,8 @@ consensus-loop/
 ├── .claude-plugin/
 │   └── plugin.json        ← Plugin metadata (name, version, author)
 │
+├── .mcp.json              ← MCP server declaration (auto-registered by plugin system)
+│
 ├── hooks/
 │   └── hooks.json         ← Hook event registration (auto-discovered)
 │
