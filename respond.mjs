@@ -8,7 +8,7 @@
  * pending_tag items: corrections extracted and forwarded to claude -p.
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBinary, spawnResolved } from "./cli-runner.mjs";
@@ -880,6 +880,69 @@ function main() {
   if (synced.length === 0 && corrections.length === 0 && promotionChanged.length === 0) {
     console.log(t("respond.no_gpt_response"));
   }
+
+  // ── Audit History Log ────────────────────────────────────
+  // Append verdict to persistent JSONL log for cross-session pattern analysis.
+  try {
+    const historyDir = resolve(REPO_ROOT, ".claude");
+    if (!existsSync(historyDir)) mkdirSync(historyDir, { recursive: true });
+    const historyPath = resolve(historyDir, "audit-history.jsonl");
+
+    // Read session ID if available
+    const sessionFile = resolve(HOOKS_DIR, plugin.session_file ?? "session.id");
+    let sessionId = "";
+    try { sessionId = readFileSync(sessionFile, "utf8").trim(); } catch { /* no session file */ }
+
+    // Read audit.lock for duration (if it still exists, audit just completed)
+    let durationMs = 0;
+    const lockPath = resolve(REPO_ROOT, ".claude", "audit.lock");
+    try {
+      const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+      if (lock.startedAt) durationMs = Date.now() - lock.startedAt;
+    } catch { /* lock already deleted or unreadable */ }
+
+    // Extract scope/track from evidence
+    const scopeSection = readSection(gptMd, SEC.auditScope);
+    const track = scopeSection ? scopeSection.lines.find(l => l.trim() && !l.startsWith("##"))?.trim() || "" : "";
+
+    // Collect all verdict info
+    const allItems = parseStatusLines(gptMd);
+    const agreeIds = [];
+    const pendingIds = [];
+    const rejectionCodes = [];
+
+    for (const item of allItems) {
+      const ids = collectIdsFromLine(item.raw);
+      if (item.status === agreeInner) agreeIds.push(...ids);
+      if (item.status === pendingInner) pendingIds.push(...ids);
+    }
+
+    // Extract rejection codes from corrections
+    for (const c of corrections) {
+      if (c.codes) {
+        for (const code of c.codes) {
+          rejectionCodes.push(code);
+        }
+      }
+    }
+
+    const verdict = pendingIds.length > 0 ? "pending" : (agreeIds.length > 0 ? "agree" : "none");
+
+    if (verdict !== "none") {
+      const entry = {
+        timestamp: new Date().toISOString(),
+        session_id: sessionId,
+        track,
+        req_ids: [...new Set([...agreeIds, ...pendingIds])],
+        verdict,
+        rejection_codes: rejectionCodes,
+        agreed_count: agreeIds.length,
+        pending_count: pendingIds.length,
+        duration_ms: durationMs,
+      };
+      appendFileSync(historyPath, JSON.stringify(entry) + "\n", "utf8");
+    }
+  } catch { /* audit history is non-critical — fail silently */ }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

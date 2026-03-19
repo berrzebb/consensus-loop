@@ -819,6 +819,130 @@ function toolRtmParse(params) {
   };
 }
 
+// ═══ Tool: audit_history ════════════════════════════════════════════════
+
+function toolAuditHistory(params) {
+  const { path: historyPath, track, code, since, summary = false } = params;
+
+  const defaultPath = resolve(process.cwd(), ".claude", "audit-history.jsonl");
+  const fullPath = historyPath ? resolve(historyPath) : defaultPath;
+
+  if (!existsSync(fullPath)) {
+    return { error: `No audit history found at ${fullPath}. Audit history is written by respond.mjs after each verdict.` };
+  }
+
+  // Parse JSONL
+  const content = readFileSync(fullPath, "utf8");
+  const lines = content.split(/\r?\n/).filter(l => l.trim());
+  let entries = [];
+  for (const line of lines) {
+    try { entries.push(JSON.parse(line)); } catch { /* skip malformed */ }
+  }
+
+  // Apply filters
+  if (track) {
+    entries = entries.filter(e => (e.track || "").toLowerCase().includes(track.toLowerCase()));
+  }
+  if (code) {
+    entries = entries.filter(e =>
+      (e.rejection_codes || []).some(rc =>
+        (typeof rc === "string" ? rc : rc.code || "").includes(code)
+      )
+    );
+  }
+  if (since) {
+    const sinceMs = new Date(since).getTime();
+    if (!isNaN(sinceMs)) {
+      entries = entries.filter(e => new Date(e.timestamp).getTime() >= sinceMs);
+    }
+  }
+
+  if (entries.length === 0) {
+    return { text: "No matching audit history entries.", summary: "0 entries", json: { total: 0 } };
+  }
+
+  const output = [];
+
+  if (summary) {
+    // Aggregate statistics
+    const byVerdict = { agree: 0, pending: 0 };
+    const byTrack = {};
+    const byCode = {};
+    let totalRounds = 0;
+
+    for (const e of entries) {
+      byVerdict[e.verdict] = (byVerdict[e.verdict] || 0) + 1;
+      if (e.track) byTrack[e.track] = (byTrack[e.track] || 0) + 1;
+      for (const rc of (e.rejection_codes || [])) {
+        const c = typeof rc === "string" ? rc : rc.code || "unknown";
+        byCode[c] = (byCode[c] || 0) + 1;
+      }
+      totalRounds++;
+    }
+
+    output.push("## Audit History Summary\n");
+    output.push(`- Total entries: ${totalRounds}`);
+    output.push(`- Agree: ${byVerdict.agree || 0}, Pending: ${byVerdict.pending || 0}`);
+    output.push(`- Approval rate: ${totalRounds > 0 ? Math.round(((byVerdict.agree || 0) / totalRounds) * 100) : 0}%\n`);
+
+    if (Object.keys(byTrack).length > 0) {
+      output.push("### By Track\n");
+      output.push("| Track | Entries |");
+      output.push("|-------|--------|");
+      for (const [t, count] of Object.entries(byTrack).sort((a, b) => b[1] - a[1])) {
+        output.push(`| ${t} | ${count} |`);
+      }
+      output.push("");
+    }
+
+    if (Object.keys(byCode).length > 0) {
+      output.push("### By Rejection Code\n");
+      output.push("| Code | Count |");
+      output.push("|------|-------|");
+      for (const [c, count] of Object.entries(byCode).sort((a, b) => b[1] - a[1])) {
+        output.push(`| ${c} | ${count} |`);
+      }
+      output.push("");
+    }
+
+    // Pattern detection
+    const patterns = [];
+    for (const [c, count] of Object.entries(byCode)) {
+      if (count >= 3) patterns.push(`⚠️ \`${c}\` appeared ${count} times — structural issue likely`);
+    }
+    if (patterns.length > 0) {
+      output.push("### Risk Patterns\n");
+      for (const p of patterns) output.push(`- ${p}`);
+    }
+
+    return {
+      text: output.join("\n"),
+      summary: `${totalRounds} entries, ${byVerdict.agree || 0} agree, ${byVerdict.pending || 0} pending`,
+      json: { total: totalRounds, byVerdict, byTrack, byCode },
+    };
+  }
+
+  // Detail mode — show recent entries as table
+  output.push("## Audit History\n");
+  output.push("| Timestamp | Track | Verdict | Req IDs | Rejection Codes |");
+  output.push("|-----------|-------|---------|---------|-----------------|");
+
+  for (const e of entries.slice(-50)) { // last 50
+    const codes = (e.rejection_codes || []).map(rc =>
+      typeof rc === "string" ? rc : `${rc.code}[${rc.severity}]`
+    ).join(", ") || "—";
+    const reqIds = (e.req_ids || []).join(", ") || "—";
+    const ts = e.timestamp ? e.timestamp.slice(0, 16).replace("T", " ") : "—";
+    output.push(`| ${ts} | ${e.track || "—"} | ${e.verdict} | ${reqIds} | ${codes} |`);
+  }
+
+  return {
+    text: output.join("\n"),
+    summary: `${entries.length} entries (showing last ${Math.min(entries.length, 50)})`,
+    json: { total: entries.length, entries: entries.slice(-50) },
+  };
+}
+
 // ═══ MCP Protocol ═══════════════════════════════════════════════════════
 
 const SERVER_INFO = { name: "consensus-loop", version: "2.3.0" };
@@ -890,6 +1014,20 @@ const TOOLS = [
     },
   },
   {
+    name: "audit_history",
+    description: "Query the persistent audit history log. Returns verdict timeline, rejection code frequency, track distribution, and risk pattern detection. Use for cross-session quality analysis, identifying structural issues, and tracking improvement trends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path:    { type: "string", description: "Path to audit-history.jsonl (default: .claude/audit-history.jsonl)" },
+        track:   { type: "string", description: "Filter by track name" },
+        code:    { type: "string", description: "Filter by rejection code" },
+        since:   { type: "string", description: "ISO timestamp — only entries after this time" },
+        summary: { type: "boolean", description: "If true, return aggregate statistics instead of detail rows" },
+      },
+    },
+  },
+  {
     name: "coverage_map",
     description: "Map test coverage data to files. Returns per-file statement/branch/function/line percentages from vitest coverage JSON. Use after running `npm run test:coverage` to fill RTM Coverage columns.",
     inputSchema: {
@@ -953,6 +1091,14 @@ function handleRequest(req) {
 
       if (name === "rtm_merge") {
         const result = toolRtmMerge(args || {});
+        if (result.error) {
+          return { content: [{ type: "text", text: result.error }], isError: true };
+        }
+        return { content: [{ type: "text", text: `${result.text}\n\n(${result.summary})` }] };
+      }
+
+      if (name === "audit_history") {
+        const result = toolAuditHistory(args || {});
         if (result.error) {
           return { content: [{ type: "text", text: result.error }], isError: true };
         }
