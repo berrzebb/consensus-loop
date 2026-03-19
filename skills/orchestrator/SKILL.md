@@ -225,6 +225,17 @@ If the agent has terminated or is unresponsive:
 2. Include previous rejection codes + existing worktree reference path in prompt
 3. Update `agent_id` in handoff
 
+### Upstream Delay Notification
+
+When parallel tracks are active, monitor for upstream delays that block downstream work:
+
+1. **After each correction round**: query `audit_history` for the current track
+2. **If 3+ rejections on same track**: auto-update downstream tasks in handoff as `blocked (upstream: [task-id] rejected 3x)`
+3. **If audit TTL exceeded (30 min)**: mark downstream as `delayed (upstream: [task-id] audit timeout)`
+4. **Present to user**: "Track PA-5 has been rejected 3 times. Downstream tracks EG-3 and GW-7 are now blocked. Escalate or continue?"
+
+This prevents downstream workers from starting on assumptions that may be invalidated by upstream corrections.
+
 ## Retrospective & Merge
 
 After `[agree_tag]` and worker WIP commit:
@@ -236,9 +247,18 @@ After `[agree_tag]` and worker WIP commit:
 2. **Perform retrospective** (see `templates/references/${locale}/retro-questions.md`):
    - What went well
    - What was problematic
+   - **Audit accuracy review**: check for false positives (auditor rejected correct code) or false negatives (auditor approved buggy code). Record in retrospective notes.
    - Memory cleanup + update (see `templates/references/${locale}/memory-cleanup.md`)
    - Bidirectional feedback
-3. **Release gate**: run `session-self-improvement-complete` in Bash → marker resets to `retro_pending: false`
+3. **Rejection code improvement check**: query `audit_history --summary --track <current-track>`:
+   - If a rejection code has >30% false positive rate across 5+ rounds → flag for policy review (suggest editing `rejection-codes.md` or `test-checklist.md`)
+   - If same rejection code appears 3+ times on this track → suggest planner re-scoping
+   - Record findings in retrospective notes
+4. **Technical debt capture**: if retrospective identifies improvement opportunities:
+   - Append to `work-catalog.md` as `type: tech-debt` with description and priority
+   - Scout will include tech-debt items in future RTM gap analysis
+   - Orchestrator presents tech-debt items alongside regular work when selecting tasks
+5. **Release gate**: run `session-self-improvement-complete` in Bash → marker resets to `retro_pending: false`
 4. **Squash merge**: invoke `/consensus-loop:merge` to squash all WIP commits into a single structured commit on the target branch
 5. **Write session handoff**: update handoff file with completed task status + clear agent fields or mark completed
 6. **Loop**: return to Session Start → present next available task

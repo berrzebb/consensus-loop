@@ -69,7 +69,7 @@ Planner reads the gap report in Phase 2 (Research) and proposes work-breakdown a
 
 **Depends on:** RTM ✅, Planner interactive protocol ✅
 
-### 2. Retrospective → Rejection Code Improvement Loop
+### 2. ⚠️ Retrospective → Rejection Code Improvement Loop — protocol defined
 
 **Problem:** Auditor issues false positives (rejects correct code) or false negatives (approves buggy code). Currently no mechanism to track or correct this.
 
@@ -84,7 +84,7 @@ Accumulate in audit-history.jsonl. When a rejection code has >30% false positive
 
 **Depends on:** Audit history log 🔜, Retrospective protocol ✅
 
-### 3. Upstream Delay → Downstream Auto-Notification
+### 3. ⚠️ Upstream Delay → Downstream Auto-Notification — protocol defined
 
 **Problem:** When parallel tracks execute, an upstream track's repeated rejection or timeout blocks downstream tracks. Currently the orchestrator discovers this only when it tries to spawn the downstream worker.
 
@@ -95,19 +95,15 @@ Accumulate in audit-history.jsonl. When a rejection code has >30% false positive
 
 **Depends on:** Audit history log 🔜, Background spawn ✅, Risk pattern detection ✅
 
-### 4. Project-Level Rejection Pattern Dashboard
+### 4. ✅ Project-Level Rejection Pattern Dashboard — implemented
 
-**Problem:** Each session is independent. "Which categories are repeatedly problematic?" and "Is quality improving?" are invisible.
-
-**Solution:** Periodic analysis of audit-history.jsonl:
+Implemented via `audit_history` MCP tool with `summary: true` mode. Provides:
 - Rejection code frequency by track
-- Rejection code frequency by file/directory
-- Round-over-round trend (improving or degrading?)
-- Most-rejected files → candidates for refactoring
+- Approval rate trending
+- Risk pattern detection (3+ same code → structural issue warning)
+- Filter by track, code, since timestamp
 
-Could be a new MCP tool (`audit_history`) or a CLI command (`/consensus-stats`).
-
-**Depends on:** Audit history log 🔜
+The `/consensus-status` CLI command also surfaces current state.
 
 ### 5. Technical Debt Tracking
 
@@ -139,10 +135,10 @@ Could be a new MCP tool (`audit_history`) or a CLI command (`/consensus-stats`).
 
 ```
 ✅ Audit History Log (infra) — implemented
-    ├─→ Rejection Code Improvement Loop (2) — 🔜 next
-    ├─→ Upstream Delay Notification (3)
-    ├─→ Rejection Pattern Dashboard (4)
-    └─→ Technical Debt Tracking (5) ←─ also needs Work-catalog + Retrospective
+    ├─→ ⚠️ Rejection Code Improvement Loop (2) — protocol defined, needs structural enforcement
+    ├─→ ⚠️ Upstream Delay Notification (3) — protocol defined, needs structural enforcement
+    ├─→ ✅ Rejection Pattern Dashboard (4) — implemented (audit_history --summary)
+    └─→ ⚠️ Technical Debt Tracking (5) — protocol defined, needs structural enforcement
 
 ✅ Scout → Planner Reverse Feedback (1) — implemented (Phase 7 Gap Report)
 ```

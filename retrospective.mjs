@@ -58,6 +58,25 @@ function main() {
   // In subagent mode, retro is deferred to the orchestrator session (main session)
   const sessionId = process.env.RETRO_SESSION_ID || null;
   const isSubagent = process.env.PARENT_TOOL_USE_ID != null;
+  // ── Rejection Code Improvement Check ──────────────────
+  // Structural enforcement: auto-detect if audit quality has degraded.
+  let policyReview = null;
+  try {
+    const { checkFalsePositiveRate } = await import("./scripts/enforcement.mjs");
+    const { REPO_ROOT } = await import("./context.mjs");
+    const historyPath = resolve(REPO_ROOT, ".claude", "audit-history.jsonl");
+    // Extract track from agreed items (best effort)
+    const trackMatch = agreedItems.match(/\b([A-Z]{2,})-\d+/);
+    if (trackMatch) {
+      const track = trackMatch[0].replace(/-\d+$/, "");
+      const result = checkFalsePositiveRate(historyPath, track, 5);
+      if (result.needsReview) {
+        policyReview = result.codes;
+        console.log(`[enforcement] Policy review needed for rejection codes: ${result.codes.join(", ")}`);
+      }
+    }
+  } catch { /* enforcement is non-critical */ }
+
   if (!existsSync(MARKER_DIR)) mkdirSync(MARKER_DIR, { recursive: true });
   writeFileSync(MARKER_PATH, JSON.stringify({
     retro_pending: true,
@@ -66,6 +85,7 @@ function main() {
     agreed_items: agreedItems,
     instructions_shown: false,
     deferred_to_orchestrator: isSubagent,
+    policy_review_needed: policyReview,
     created_at: new Date().toISOString(),
   }, null, 2), "utf8");
 
