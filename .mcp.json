@@ -1,6 +1,7 @@
 {
   "consensus-loop": {
     "command": "node",
-    "args": ["scripts/mcp-server.mjs"]
+    "args": ["scripts/mcp-server.mjs"],
+    "cwd": "${CLAUDE_PLUGIN_ROOT}"
   }
 }
