@@ -162,6 +162,12 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 *`echo "session-self-improvement-complete"` releases the gate. Session summary: 8 files + 155 tests produced, 4 audit rounds completed, paper advanced v0.3→v0.4 with 8 Figures, emergent double verification discovered. Handoff specifies next tasks: K2 (Retriever Vector Closure) → K3 (Multimodal Reference) → Track 15 FE.*
 
+**Handoff file update — session state persisted for next session:**
+
+![Handoff file written with completed task states (K1/K4 done with agent_id, worktree paths, results), next tasks (K2 not-started), paper status, and commit summary table](assets/handoff-write-session-state.png)
+
+*The orchestrator writes `session-handoff.md` with full state: completed tasks (K1 4 files/48 tests, K4 4 files/105 tests), agent IDs, worktree branches, correction history, protocol changes, paper status (v0.4), and next session targets. This enables any future session to resume without re-exploration.*
+
 ---
 
 ## Lightweight Entry: Audit Gate Only
