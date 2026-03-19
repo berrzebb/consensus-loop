@@ -57,6 +57,9 @@ Use deterministic tools before LLM reasoning — facts first, inference second:
 | `dependency_graph` | Import/export DAG, components, topological sort, cycles | Scout, Orchestrator, Planner |
 | `audit_scan` | Pattern scan (type-safety, hardcoded, console) | Implementer, Verify |
 | `coverage_map` | Per-file coverage % from vitest JSON | Verify, Implementer |
+| `rtm_parse` | Parse RTM markdown → structured rows, filter by req_id/status | Scout, Implementer, Orchestrator |
+| `rtm_merge` | Row-level merge of worktree RTMs with conflict detection | Orchestrator, Merge |
+| `audit_history` | Query persistent audit history — verdicts, rejection patterns, risk detection | Orchestrator, Planner, Retrospective |
 
 ## Evidence Package Format
 

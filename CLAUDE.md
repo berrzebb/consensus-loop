@@ -63,6 +63,9 @@ scripts/
 | `dependency_graph` | Import/export DAG, connected components, topological sort, cycle detection | Yes (mtime) | Scout, Orchestrator, Planner |
 | `audit_scan` | Pattern scan (type-safety, hardcoded, console) | No | Implementer, Verify |
 | `coverage_map` | Per-file coverage percentages from vitest JSON | No | Verify, Implementer |
+| `rtm_parse` | Parse RTM markdown → structured rows, filter by req_id/status | No | Scout, Implementer, Orchestrator, Verify |
+| `rtm_merge` | Row-level merge of worktree RTMs with conflict detection | No | Orchestrator, Merge |
+| `audit_history` | Query persistent audit history — verdicts, rejection patterns, risk detection | No | Orchestrator, Planner, Retrospective |
 
 ## RTM (Requirements Traceability Matrix)
 

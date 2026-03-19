@@ -18,10 +18,12 @@
 | Risk management | Risk levels on rejection codes, pattern detection rules |
 | Background agent spawning | run_in_background: true for all worker spawns |
 | Interactive planner | 6-phase protocol: intent → research → impact → conflicts → draft → review |
+| Audit history log | Persistent JSONL log + `audit_history` MCP tool with summary/filter/pattern detection |
+| Scout gap report | Phase 7 gap report — unimplemented reqs, orphans, broken links → planner feedback |
 
 ---
 
-## 🔜 Next: Audit History Log (infrastructure)
+## ✅ Audit History Log (infrastructure) — implemented
 
 **Prerequisite for items 2-5 below.** Without persistent audit history, cross-session analysis is impossible.
 
@@ -136,11 +138,11 @@ Could be a new MCP tool (`audit_history`) or a CLI command (`/consensus-stats`).
 ## Dependency Graph
 
 ```
-Audit History Log (infra)
-    ├─→ Rejection Code Improvement Loop (2)
+✅ Audit History Log (infra) — implemented
+    ├─→ Rejection Code Improvement Loop (2) — 🔜 next
     ├─→ Upstream Delay Notification (3)
     ├─→ Rejection Pattern Dashboard (4)
     └─→ Technical Debt Tracking (5) ←─ also needs Work-catalog + Retrospective
 
-Scout → Planner Reverse Feedback (1) — independent, can start now
+✅ Scout → Planner Reverse Feedback (1) — implemented (Phase 7 Gap Report)
 ```

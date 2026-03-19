@@ -945,7 +945,7 @@ function toolAuditHistory(params) {
 
 // ═══ MCP Protocol ═══════════════════════════════════════════════════════
 
-const SERVER_INFO = { name: "consensus-loop", version: "2.3.0" };
+const SERVER_INFO = { name: "consensus-loop", version: "2.4.0" };
 
 const TOOLS = [
   {

@@ -91,7 +91,7 @@ consensus-loop was built to manage [SoulFlow Orchestrator](https://github.com/be
 | Broken cross-track links found | 8 (automatically, in one pass) |
 | Orphan tests identified | 7 |
 | Parallel workers per session | Up to 3 (background, worktree-isolated) |
-| Test suite | 95 tests across 20 suites |
+| Test suite | 104 tests across 21 suites |
 
 **What RTM looks like in practice:**
 
@@ -183,6 +183,7 @@ These tools provide **facts, not inference** — used by all roles:
 | `coverage_map` | Per-file coverage percentages from vitest JSON |
 | `rtm_parse` | Parse RTM markdown → structured rows, filter by req_id/status |
 | `rtm_merge` | Row-level merge of worktree RTMs with conflict detection |
+| `audit_history` | Query persistent audit history — verdicts, rejection patterns, risk detection |
 
 ### Hook Cycle
 
