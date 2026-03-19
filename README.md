@@ -120,6 +120,12 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 *Agent A (PA-7 import boundary) and Agent B (RP-4+SO-6 binding tests) execute in isolated worktrees. The orchestrator tracks completion status and waits for both to finish before proceeding to merge.*
 
+**Full cycle completion — done-criteria verification + evidence integration:**
+
+![Implementer passes all 8 done-criteria categories, 105 tests pass, two parallel workers complete and proceed to evidence integration](assets/done-criteria-verification-complete.png)
+
+*Both parallel workers pass all done-criteria (CQ, T, CC, CL, CV — all PASS, 105 tests including 27 new + 78 regression). The orchestrator integrates evidence from both worktrees and proceeds to audit → retrospective → squash merge.*
+
 ---
 
 ## Lightweight Entry: Audit Gate Only
