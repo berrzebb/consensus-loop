@@ -144,6 +144,12 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 *The main-branch audit discovers 3 substantive CC-1 issues that passed worktree-local verification: has_role gating mismatch, BMS25 score initialization, ordinal rank seed. This is the emergent double verification in action — two structurally independent verification passes catch different failure classes.*
 
+**Correction cycle resolution — all CC-1 issues fixed, remaining issues classified:**
+
+![Third audit shows all 3 CC-1 bugs resolved, remaining issues classified as infrastructure (CC-2 diff baseline) vs substantive (T-2 write path test)](assets/correction-cycle-resolution.png)
+
+*After correction: all CC-1 claim-code mismatches resolved (has_role ✅, lexical_scores ✅, _last_scores ✅). Remaining issues cleanly classified — CC-2 is infrastructure (git diff baseline), T-2 is substantive (write path assertion missing). The protocol's correction cycle converges.*
+
 ---
 
 ## Lightweight Entry: Audit Gate Only
