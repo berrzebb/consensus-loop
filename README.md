@@ -1,469 +1,272 @@
-# consensus-loop v2.3.0
+# consensus-loop
 
-> **Claude Code hook plugin** — tag-based two-party consensus protocol between Claude (implementer) and an external AI auditor (GPT/Codex), with HITL retrospective gates and multi-agent orchestration.
+**AI writes code. A different AI reviews it. Nothing ships without consensus.**
 
-Drop in one directory, edit one `config.json`, and every file edit is automatically routed through an **edit → audit → agree → retro → commit** cycle. Supports multi-agent orchestration with headless workers running in isolated git worktrees.
-
----
-
-## Why This Exists
-
-1. **Independent critic** — The AI that writes (Claude) and the AI that reviews (GPT/Codex) are different models.
-2. **No progress without consensus** — `[trigger_tag]` items are incomplete until promoted to `[agree_tag]`.
-3. **Auto retrospective** — After consensus, the session gate blocks commits and the AI agent automatically starts the retrospective (no user instruction needed).
-4. **Policy as data** — Audit criteria, rejection codes, and output formats are defined in editable reference files, not code.
-
----
-
-## Key Features
-
-| Feature | Description |
-|---|---|
-| **Consensus loop** | `trigger_tag` in `watch_file` → `audit.mjs` → waits for `agree_tag` |
-| **Async audit** | Hook spawns audit as a detached background process → returns immediately (no blocking) |
-| **Streaming output** | Codex NDJSON events are parsed line-by-line in real-time → `audit-bg.log` |
-| **Auto-sync** | `gpt.md` newer than `watch_file` → `respond.mjs` promotes/demotes tags |
-| **Quality gates** | Every file edit → matching `quality_rules` run inline (ESLint, npm audit, …) |
-| **Session gate (auto-retro)** | PreToolUse hook blocks Bash/commit → AI auto-starts retrospective |
-| **Facade prompts** | Lean prompts (~30 lines) reference `{{REFERENCES_DIR}}/` for detailed rules |
-| **Shared context** | `context.mjs` — single source for config, paths, parsers, i18n (no duplication) |
-| **Locale allowlist** | `plugin.locale` validated against `{"en","ko"}` allowlist — invalid values fall back to `"en"` (path traversal prevention) |
-| **Audit timestamp** | System-appended `> 감사 완료: YYYY-MM-DD HH:MM` on gpt.md (zero agent tokens) |
-| **Debounce** | Rapid consecutive edits are debounced (10 s) — only the last edit triggers an audit |
-| **Audit lock** | `audit.lock` in `REPO_ROOT/.claude/` prevents concurrent audits (TTL + PID liveness) |
-| **Session lifecycle** | `SessionStart` / `Stop` hooks manage session ID and cleanup |
-| **Subagent tracking** | `SubagentStop` hook captures implementer agent results |
-| **Handoff sync** | `handoff-writer.mjs` — bidirectional sync between repo handoff doc and Claude memory |
-| **Plugin skills** | 5 slash-command skills: `consensus-loop:orchestrator`, `consensus-loop:verify`, `consensus-loop:merge`, `consensus-loop:planner`, `consensus-loop:guide` |
-| **Plugin agents** | 2 agent definitions: `implementer` (worktree worker), `scout` (RTM generator) |
-| **CLI commands** | 2 slash commands: `/consensus-audit` (manual audit), `/consensus-status` (current state) |
-| **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
-| **Hook toggles** | `plugin.hooks_enabled` — individually disable audit, session_gate, quality_rules, pre_compact |
-| **PreCompact snapshot** | Saves audit state (retro-marker, audit.lock, last item) before context compaction |
-| **Resume detection** | SessionStart auto-detects 7 interrupted states → provides specific resume instructions |
-| **Context reinforcement** | SessionStart re-injects AI-GUIDE "absolute rules" via `<CONTEXT-REINFORCEMENT>` tag |
-| **Scout agent** | Read-only RTM generator — produces 3-way traceability matrix (Forward/Backward/Bidirectional) using deterministic tools |
-| **MCP tools** | 4 deterministic tools via `.mcp.json` + `scripts/mcp-server.mjs`: `code_map`, `dependency_graph`, `audit_scan`, `coverage_map` — auto-registered by plugin system |
-| **RTM (traceability)** | Requirements Traceability Matrix — scout generates, implementer updates, auditor verifies, orchestrator closes |
-| **Coverage verification** | CV-1~CV-3 done-criteria: stmt ≥ 85%, branch ≥ 75%, coverage data exists. `coverage-gap` rejection code |
-
----
-
-## Folder Structure
-
-```
-consensus-loop/
-│
-├── .claude-plugin/
-│   └── plugin.json        ← Plugin metadata (name, version, author)
-│
-├── .mcp.json              ← MCP server declaration (auto-registered by plugin system)
-│
-├── hooks/
-│   └── hooks.json         ← Hook event registration (auto-discovered by plugin system)
-│
-├── skills/                ← Slash-command skills (auto-discovered, prefix: consensus-loop:)
-│   ├── orchestrator/      ← consensus-loop:orchestrator — multi-track distribution + agent registry
-│   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
-│   ├── merge-worktree/    ← consensus-loop:merge — squash merge worktree results
-│   ├── planner/           ← consensus-loop:planner — planning + work breakdown
-│   └── consensus-loop/    ← consensus-loop:guide — evidence package guide
-│
-├── agents/
-│   ├── implementer.md     ← Implementer agent persona (worktree isolation)
-│   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
-│
-├── commands/              ← CLI commands (auto-discovered)
-│   ├── consensus-audit.md ← /consensus-audit — trigger manual audit
-│   └── consensus-status.md← /consensus-status — show current loop state
-│
-├── docs/                  ← User-facing documentation
-│   ├── en/
-│   │   ├── AI-GUIDE.md    ← AI agent usage guide (English)
-│   │   ├── README.md      ← Plugin reference (English)
-│   │   └── ROADMAP.md     ← Roadmap
-│   └── ko/
-│       ├── AI-GUIDE.md    ← AI agent usage guide (Korean)
-│       └── README.md      ← Plugin reference (Korean)
-│
-├── scripts/               ← Deterministic tools + MCP server
-│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
-│   ├── code-map.mjs       ← Standalone symbol index generator
-│   ├── audit-scan.mjs     ← Pattern scanner (type-safety, hardcoded, console)
-│   ├── coverage-mapper.mjs← Coverage JSON → RTM integration (CLI)
-│   └── add-locale-key.mjs ← Locale key addition helper
-│
-├── context.mjs            ← Shared module: config, paths, parsers, i18n cache, safeLocale
-├── index.mjs              ← PostToolUse hook entry point
-├── audit.mjs              ← Runs GPT/Codex audit when trigger_tag detected
-├── respond.mjs            ← Syncs gpt.md ↔ claude.md; promotes/demotes tags
-├── retrospective.mjs      ← Sets retro marker after all items agreed
-├── session-gate.mjs       ← PreToolUse hook: blocks Bash until retro complete
-├── pre-compact.mjs        ← PreCompact hook: saves audit state before context compaction
-├── session-start.mjs      ← SessionStart hook: handoff sync + resume detection + context reinforcement
-├── session-stop.mjs       ← Stop hook: handoff sync + auto-commit
-├── subagent-stop.mjs      ← SubagentStop hook: detects worker completion + deferred retro
-├── CLAUDE.md              ← AI agent context (module map, gotcha, config reference)
-├── handoff-writer.mjs     ← Handoff sync between repo and Claude memory (portable)
-├── cli-runner.mjs         ← Cross-platform binary resolver (sync + async spawn)
-├── i18n.mjs               ← Standalone locale helper (fallback for non-context imports)
-│
-├── locales/
-│   ├── en.json
-│   └── ko.json
-│
-├── templates/
-│   ├── audit-prompt.md    ← Facade (~30 lines) → references policy files
-│   ├── fix-prompt.md      ← Facade → references fix-rules, evidence-format
-│   ├── retro-prompt.md    ← Facade → references retro-questions, memory-cleanup
-│   └── references/
-│       ├── ko/            ← Korean policy files (team-editable, 10 files)
-│       │   ├── rejection-codes.md
-│       │   ├── test-checklist.md
-│       │   ├── output-format.md
-│       │   ├── evidence-format.md
-│       │   ├── done-criteria.md
-│       │   ├── memory-cleanup.md
-│       │   ├── principles.md
-│       │   ├── retro-questions.md
-│       │   ├── fix-rules.md
-│       │   └── traceability-matrix.md
-│       └── en/            ← English equivalents (same 10 files)
-│
-├── tests/
-├── plans/                 ← Work planning docs (ko/en)
-├── examples/              ← Example config, plans, templates, and references
-│   ├── config.example.json
-│   ├── plans/             ← Example execution-order, work-catalog, sample-track
-│   └── templates/
-│       ├── {ko,en}/       ← Example audit/fix/retro prompts
-│       └── references/
-│           ├── ko/        ← Example Korean policy files (9 × .example.md)
-│           └── en/        ← Example English policy files (9 × .example.md)
-│
-└── (auto-generated — gitignored, written to REPO_ROOT/.claude/)
-    ├── audit.lock              ← Background audit PID + TTL (prevents concurrent runs)
-    ├── audit-bg.log            ← Real-time streaming log from background audit
-    ├── audit-debounce.ts       ← Debounce timestamp for consecutive edits
-    └── compaction-snapshot.json ← PreCompact state snapshot (restored on SessionStart)
-    (plugin-local — gitignored within plugin dir)
-    ├── config.json
-    ├── .session-state/    ← retro-marker.json (session gate state)
-    ├── ack.timestamp
-    ├── session.id
-    ├── debug.log
-    └── codex-session.log
-```
-
----
-
-## How It Works
-
-### Multi-Agent Lifecycle
-
-```
-consensus-loop:planner ─── Track definition + execution plan adjustment
-    ↓
-scout agent ─── dependency_graph + code_map → 3-way RTM (Forward/Backward/Bidirectional)
-    ↓
-consensus-loop:orchestrator ─── Distribute Forward RTM rows → scope validation → parallel spawn
-    ↓                                                          (non-overlapping files only)
-┌─── Track A (worktree) ──────┐  ┌─── Track B (worktree) ──────┐
-│  implementer: implement      │  │  implementer: implement      │
-│  → consensus-loop:verify     │  │  → consensus-loop:verify     │
-│  → submit evidence           │  │  → submit evidence           │
-│  [pending_tag] → SendMessage │  │  [agree_tag] → WIP commit   │
-│  → correction → resubmit    │  │                               │
-│  [agree_tag] → WIP commit   │  │                               │
-└──────────────────────────────┘  └──────────────────────────────┘
-    ↓ (all tracks: agree_tag + WIP commit)
-orchestrator resumes (per-track)
-    ↓
-Retrospective protocol (session-gate blocks Bash/Agent)
-    → memory cleanup + principles update
-    → "session-self-improvement-complete" → gate release
-    ↓
-/merge-worktree → squash merge → single structured commit
-    ↓
-Write session handoff → select next WB → loop
-```
-
-### Hook Cycle (PostToolUse)
-
-```
-Code Edit → PostToolUse hook (index.mjs)
-    │
-    ├─ watch_file + trigger_tag?
-    │       │
-    │       ├─ audit.lock exists? → skip (already running)
-    │       └─ spawn audit.mjs (detached, background)
-    │              → hook returns immediately
-    │              → audit-bg.log streams real-time output
-    │              → audit.lock created (PID + TTL)
-    │              → agent auto-registers Cron watcher
-    │
-    │   ... audit runs in background (Codex review) ...
-    │
-    │       audit.mjs completes:
-    │              → gpt.md created/updated
-    │              → respond.mjs (tag sync)
-    │              → audit.lock deleted
-    │              ↓
-    │   [Detection: Cron watcher OR next PostToolUse]
-    │              ↓
-    │    ┌─── [agree_tag] ───── implementer WIP commit
-    │    │                           ↓
-    │    │                    retrospective.mjs → retro-marker set
-    │    │                           ↓
-    │    │                    session-gate blocks Bash
-    │    │                           ↓
-    │    │                    orchestrator: HITL retrospective
-    │    │                           ↓
-    │    │                    echo session-self-improvement-complete
-    │    │                           ↓
-    │    │                    orchestrator: /consensus-loop:merge → squash commit
-    │    │                           ↓
-    │    │                    orchestrator: write handoff → next WB
-    │    │
-    │    └─── [pending_tag] → respond.mjs --auto-fix → correction
-    │
-    ├─ gpt.md newer? → respond.mjs (auto-sync)
-    ├─ planning file? → respond.mjs --gpt-only
-    └─ quality rule? → run command (ESLint, npm audit, …)
-```
-
-### Session Gate (HITL)
-
-The `session-gate.mjs` PreToolUse hook enforces retrospective completion:
-
-- **Marker set** → Bash/Agent blocked, Read/Write/Edit allowed (for memory work)
-- **Session-aware** → only blocks the session that completed the audit (other sessions unaffected)
-- **Completion** → `echo session-self-improvement-complete` clears marker
-- **Fail-open** → errors pass through silently (never locks the system)
-
----
-
-## Facade Pattern for Prompts
-
-Prompt templates are lean facades (~30 lines) that reference policy files:
-
-```
-audit-prompt.md (30 lines)
-  → {{REFERENCES_DIR}}/rejection-codes.md
-  → {{REFERENCES_DIR}}/test-checklist.md
-  → {{REFERENCES_DIR}}/output-format.md
-```
-
-`{{REFERENCES_DIR}}` resolves to the correct path relative to repo root at runtime (e.g., `.claude/hooks/consensus-loop/templates/references/ko/`).
-
-**To change audit criteria**: edit `references/ko/rejection-codes.md`. No code changes needed.
-
----
-
-## Installation
-
-### Option A: Claude Code Plugin (Recommended)
-
-Add the marketplace, then install the plugin:
+A Claude Code plugin that enforces a cross-model audit gate on every code change. Claude implements, GPT/Codex reviews, and a human-in-the-loop retrospective ensures the team learns from each cycle.
 
 ```bash
 claude plugin marketplace add berrzebb/claude-plugins
 claude plugin install consensus-loop@berrzebb-plugins
 ```
 
-This automatically registers all hooks (`SessionStart`, `Stop`, `PreToolUse`, `PostToolUse`, `SubagentStop`, `PreCompact`) and makes skills available as slash commands.
+That's it. All hooks, skills, agents, and MCP tools are auto-registered.
 
-### Option B: Local Development (`--plugin-dir`)
+---
 
-For local development or testing before publishing:
+## The Problem
+
+AI coding tools generate code fast. They also generate bugs fast, skip tests, drift from requirements, and self-validate their own blind spots. Instruction-based corrections ("always write tests") fade across sessions. **The model cannot reliably catch its own mistakes through self-review.**
+
+## The Solution
+
+Structure beats instruction. consensus-loop makes it **structurally impossible** to ship unreviewed code:
+
+1. **You write** → Claude implements in an isolated git worktree
+2. **A different model reviews** → GPT/Codex independently audits the evidence
+3. **Nothing merges without consensus** → `[APPROVED]` requires auditor sign-off, not self-promotion
+4. **The team learns** → Mandatory retrospective after each cycle, session-gate enforced
+
+```
+planner → scout (RTM) → orchestrator → implementer (worktree) → verify → audit → retro → merge → loop
+```
+
+---
+
+## Quick Start
+
+### 1. Install
 
 ```bash
-claude --plugin-dir .claude/hooks/consensus-loop
+claude plugin marketplace add berrzebb/claude-plugins
+claude plugin install consensus-loop@berrzebb-plugins
 ```
 
-The plugin system caches files to `~/.claude/plugins/cache/`. After modifying source files, clear the cache to pick up changes:
+### 2. Configure
 
 ```bash
-rm -rf ~/.claude/plugins/cache/consensus-loop
+# Copy example config to your project
+cp ~/.claude/plugins/cache/berrzebb-plugins/consensus-loop/*/examples/config.example.json \
+   .claude/consensus-loop/config.json
+
+# Copy prompt templates
+cp -r ~/.claude/plugins/cache/berrzebb-plugins/consensus-loop/*/examples/templates/ \
+      .claude/consensus-loop/templates/
 ```
 
-### Option C: Manual Setup (Legacy)
-
-**1. Copy into your project:**
-
-```
-cp -r consensus-loop  <your-repo>/.claude/hooks/
-```
-
-**2. Register hooks in `.claude/settings.local.json`:**
+Edit `config.json` — set your tags and paths:
 
 ```json
 {
-  "hooks": {
-    "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-start.mjs" }] }
-    ],
-    "PreToolUse": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-gate.mjs", "timeout": 10000 }] }
-    ],
-    "PostToolUse": [
-      { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/index.mjs", "timeout": 30000 }] }
-    ],
-    "PreCompact": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/pre-compact.mjs", "timeout": 5000 }] }
-    ],
-    "Stop": [
-      { "hooks": [{ "type": "command", "command": "node .claude/hooks/consensus-loop/session-stop.mjs", "async": true, "timeout": 120 }] }
-    ]
+  "consensus": {
+    "watch_file": "docs/feedback/claude.md",
+    "trigger_tag": "[REVIEW_NEEDED]",
+    "agree_tag": "[APPROVED]",
+    "pending_tag": "[CHANGES_REQUESTED]"
   }
 }
 ```
 
-**3. Copy and edit config:**
+### 3. Use
 
 ```
-cp .claude/hooks/consensus-loop/examples/config.example.json \
-   .claude/hooks/consensus-loop/config.json
+/consensus-loop:orchestrator     # Start a work session
+/consensus-loop:planner          # Design new tracks interactively
+/consensus-loop:verify           # Check done-criteria before submission
+/consensus-audit                 # Trigger manual audit
+/consensus-status                # Show current loop state
 ```
-
-**4. Copy prompt templates + references:**
-
-```
-cp -r .claude/hooks/consensus-loop/examples/templates/ \
-      .claude/hooks/consensus-loop/templates/
-```
-
-Adjust tags, file paths, and reference policies for your project.
-
-**5. Tell your AI agent about the consensus loop:**
-
-Add the following to your project's `CLAUDE.md` (or equivalent AI instructions file):
-
-```markdown
-## Consensus Loop
-
-This project uses a cross-model audit gate. Read the AI agent guide before submitting evidence:
-- Korean: `.claude/hooks/consensus-loop/docs/ko/AI-GUIDE.md`
-- English: `.claude/hooks/consensus-loop/docs/en/AI-GUIDE.md`
-```
-
-This ensures the AI agent understands the evidence format, tag rules, async audit behavior, and retrospective protocol.
 
 ---
 
-## Config Reference
+## Real-World Reference: SoulFlow Orchestrator
 
-```jsonc
-{
-  "plugin": {
-    "locale":          "en",                         // Allowlist: "en" | "ko" only — other values silently fall back to "en"
-    "audit_script":    "audit.mjs",
-    "audit_prompt":    "templates/audit-prompt.md",
-    "respond_script":  "respond.mjs",
-    "fix_prompt":      "templates/fix-prompt.md",
-    "respond_file":    "gpt.md",
-    "retro_script":    "retrospective.mjs",
-    "retro_prompt":    "templates/retro-prompt.md",
-    "ack_file":        "ack.timestamp",
-    "session_file":    "session.id",
-    "debug_log":       "debug.log",
-    "hooks_enabled": {                       // Toggle individual hooks (all default true)
-      "audit": true,                         // Audit trigger on watch_file edit
-      "session_gate": true,                  // Retro enforcement gate
-      "quality_rules": true,                 // Per-file quality checks
-      "pre_compact": true                    // State snapshot before compaction
-    }
-  },
-  "consensus": {
-    "watch_file":      "feedback/claude.md",
-    "trigger_tag":     "[GPT미검증]",
-    "agree_tag":       "[합의완료]",
-    "pending_tag":     "[계류]",
-    "planning_dirs":   ["docs/ko/design/improved"],
-    "sections": { ... },
-    "doc_patterns": { ... }
-  },
-  "quality_rules": [ ... ]
-}
+consensus-loop was built to manage [SoulFlow Orchestrator](https://github.com/berrzebb/SoulFlow-Orchestrator) — a 32MB TypeScript codebase with 141 workflow nodes, 9 AI providers, and 188 deterministic tools.
+
+**Results from production use:**
+
+| Metric | Value |
+|--------|-------|
+| Tracks planned | 17 (+ 2 parallel support tracks) |
+| Tracks RTM-scanned | 13 in 3 scout runs |
+| Broken cross-track links found | 8 (automatically, in one pass) |
+| Orphan tests identified | 7 |
+| Parallel workers per session | Up to 3 (background, worktree-isolated) |
+| Test suite | 95 tests across 20 suites |
+
+**What RTM looks like in practice:**
+
+A single scout run on 5 foundation tracks produced 3-way traceability matrices revealing:
+- Backend code: ~90% verified across all 5 tracks
+- Frontend: consistently `wip` (intentionally deferred to Track 15)
+- Concrete next steps: PA-5 (ArtifactStore extraction) and PAR-4 (workflow fanout) identified as the only true `open` items
+
+The scout eliminated redundant exploration — implementers received pre-verified RTM rows and skipped straight to coding.
+
+---
+
+## Lightweight Entry: Audit Gate Only
+
+Don't need the full orchestration? Use just the audit gate:
+
+**What you get:**
+- Every file edit → cross-model audit (async, non-blocking)
+- `[trigger_tag]` → `[agree_tag]` or `[pending_tag]` with specific file:line rejection codes
+- Quality rules (ESLint, npm audit) run inline on matching edits
+- Session gate blocks commits until retrospective completes
+
+**What you skip:**
+- Orchestrator/implementer multi-agent workflow
+- Scout + RTM traceability
+- Work breakdown planning
+
+**How:** Install the plugin normally, then disable the skills you don't need. The hook cycle (`index.mjs` → `audit.mjs` → `respond.mjs` → `session-gate.mjs`) works independently of the orchestration layer.
+
+---
+
+## How It Works
+
+### Full Development Cycle
+
+```
+planner ─── Interactive 6-phase requirement definition
+    ↓
+scout ─── dependency_graph + code_map → 3-way RTM (Forward/Backward/Bidirectional)
+    ↓
+orchestrator ─── Distribute Forward RTM rows → scope validation → parallel background spawn
+    ↓
+┌─── Track A (worktree) ──────┐  ┌─── Track B (worktree) ──────┐
+│  implementer: RTM rows only  │  │  implementer: RTM rows only  │
+│  → verify (8 categories)     │  │  → verify (8 categories)     │
+│  → submit RTM-based evidence │  │  → submit RTM-based evidence │
+│  → audit (async, background) │  │  → audit (async, background) │
+│  [pending] → fix failed rows │  │  [approved] → WIP commit     │
+│  [approved] → WIP commit     │  │                               │
+└──────────────────────────────┘  └──────────────────────────────┘
+    ↓
+retrospective (session-gate enforced) → merge (squash) → handoff → next RTM row
 ```
 
-> **Security note**: `quality_rules[].command` values are executed via the system shell (`shell: true`). Never use a `config.json` from an untrusted source — a malicious command field can execute arbitrary code on your machine.
+### Verification Categories (8)
+
+| # | Category | What it checks |
+|---|----------|---------------|
+| 1 | Code Quality (CQ) | Per-file eslint + tsc + forbidden patterns |
+| 2 | Test (T) | Test execution + direct test per claim + no regressions |
+| 3 | Claim-Code (CC) | Evidence matches git diff |
+| 4 | Cross-Layer (CL) | BE→FE contracts documented |
+| 5 | Security (S) | OWASP TOP 10 + input validation + auth guards |
+| 6 | i18n (I) | Locale keys in all supported locales |
+| 7 | Frontend (FV) | Page loads, DOM, console errors, build |
+| 8 | Coverage (CV) | Statement ≥ 85%, Branch ≥ 75% per changed file |
+
+### Deterministic MCP Tools (6)
+
+These tools provide **facts, not inference** — used by all roles:
+
+| Tool | What it does |
+|------|-------------|
+| `code_map` | Cached symbol index with line ranges |
+| `dependency_graph` | Import/export DAG, connected components, topological sort, cycle detection |
+| `audit_scan` | Pattern scan (type-safety, hardcoded strings, console.log) |
+| `coverage_map` | Per-file coverage percentages from vitest JSON |
+| `rtm_parse` | Parse RTM markdown → structured rows, filter by req_id/status |
+| `rtm_merge` | Row-level merge of worktree RTMs with conflict detection |
+
+### Hook Cycle
+
+```
+Code Edit → PostToolUse (index.mjs)
+    ├─ watch_file + trigger_tag → spawn audit (detached, async)
+    ├─ gpt.md newer → auto-sync (promote/demote tags)
+    ├─ planning file → normalize
+    └─ quality rule match → run check inline
+```
+
+Audit runs in background. Hook returns immediately. No blocking.
 
 ---
 
-## Template Variables
+## Key Design Decisions
 
-### `audit-prompt.md`
+**1. Structure over instruction.** Behavioral constraints enforced by code (session-gate, audit.lock) are more reliable than behavioral constraints enforced by prompts. You can't instruct Claude to consistently catch `test-gap` across sessions. But you can build a gate that makes it structurally impossible to proceed until a peer model confirms.
 
-| Variable | Resolved to |
-|---|---|
-| `{{SCOPE}}` | Audit scope (auto-detected or `--scope`) |
-| `{{PROMOTION_SECTION}}` | Next promotion candidate block |
-| `{{CLAUDE_MD_PATH}}` | Absolute path to watch_file |
-| `{{GPT_MD_PATH}}` | Absolute path to gpt.md |
-| `{{TRIGGER_TAG}}` / `{{AGREE_TAG}}` / `{{PENDING_TAG}}` | Tag values |
-| `{{DESIGN_DOCS_DIR}}` | Read-only design docs glob |
-| `{{LOCALE}}` | Current locale (ko/en) |
-| `{{REFERENCES_DIR}}` | Absolute path to `templates/references/{locale}/` from repo root |
+**2. Facts over inference.** The 6 MCP tools provide deterministic data — file existence, import chains, coverage percentages, symbol indices. Models judge; tools measure. This makes results stable across model changes.
 
-### `fix-prompt.md`
+**3. Policy as data.** All audit criteria, rejection codes, and evidence formats are in editable markdown files (`templates/references/`). To change audit standards, edit a file. No code changes.
 
-| Variable | Resolved to |
-|---|---|
-| `{{CORRECTIONS}}` | GPT correction list |
-| `{{REJECT_CODES}}` | Rejection codes |
-| `{{RESET_CRITERIA}}` | Reset criteria |
-| `{{NEXT_TASKS}}` | Next task list |
-| `{{GPT_MD}}` | Full gpt.md content |
-| `{{LOCALE}}` | Current locale |
-| `{{REFERENCES_DIR}}` | Path to `templates/references/{locale}/` from repo root |
+**4. Fail-open safety.** Every hook fails open — errors pass through silently. The system never locks you out. `session-gate.mjs` errors → pass. Audit failures → pass. Config missing → graceful defaults.
 
-### `retro-prompt.md`
-
-| Variable | Resolved to |
-|---|---|
-| `{{AGREED_ITEMS}}` | Recently agreed items |
-| `{{LOCALE}}` | Current locale |
-| `{{REFERENCES_DIR}}` | Path to `templates/references/{locale}/` from repo root |
+**5. Scout once, implement many.** The scout generates a Requirements Traceability Matrix (RTM) once per track. All subsequent agents work from those facts, not from re-exploration. Cost: ~8K tokens (one-time). Savings: ~5K tokens per worker per round.
 
 ---
 
-## Environment Variables
+## Architecture
 
-| Variable | Description |
-|---|---|
-| `FEEDBACK_LOOP_ACTIVE=1` | Reentrance guard (auto-set in child processes) |
-| `FEEDBACK_HOOK_DRY_RUN=1` | Dry-run mode |
-| `CODEX_BIN` | Override Codex CLI path |
-| `CLAUDE_BIN` | Override Claude CLI path |
-| `RETRO_SESSION_ID` | Session ID propagated to retro marker |
-| `VITEST_SHARD` | When set, coverage thresholds are disabled |
+### Roles
+
+| Role | What it does | Model |
+|------|-------------|-------|
+| **Planner** | Interactive 6-phase requirement definition | Opus |
+| **Scout** | Read-only 3-way RTM generation using deterministic tools | Opus |
+| **Orchestrator** | Task distribution, agent tracking, correction cycles | Inherited |
+| **Implementer** | Code in worktree, test, submit evidence, handle corrections | Sonnet |
+| **Auditor** | Independent per-row verification of RTM evidence | GPT/Codex |
+
+### Skills (5)
+
+| Skill | Purpose |
+|-------|---------|
+| `consensus-loop:orchestrator` | Session orchestration — scout, distribute, track, correct |
+| `consensus-loop:verify` | Done-criteria verification (8 categories) |
+| `consensus-loop:merge` | Squash-merge worktree with structured commit |
+| `consensus-loop:planner` | Interactive track definition + work breakdown |
+| `consensus-loop:guide` | Evidence package writing guide |
+
+### Agents (2)
+
+| Agent | Purpose |
+|-------|---------|
+| `consensus-loop:implementer` | Headless worker in worktree — code, test, evidence |
+| `consensus-loop:scout` | Read-only RTM generator — 3-way traceability |
 
 ---
 
 ## Porting to Another Project
 
-1. `claude plugin marketplace add berrzebb/claude-plugins && claude plugin install consensus-loop@berrzebb-plugins` (or copy into `.claude/hooks/`)
-2. Edit `config.json` — set tags, paths, quality rules
-3. Edit `templates/references/{locale}/` — set team policies
-4. (Manual only) Register hooks in `.claude/settings.local.json`
+```bash
+# 1. Install
+claude plugin marketplace add berrzebb/claude-plugins
+claude plugin install consensus-loop@berrzebb-plugins
 
-Example for English:
+# 2. Configure (edit tags + paths)
+# 3. Edit templates/references/ for your team's policies
+```
+
+Minimal config for English projects:
 
 ```json
 {
-  "watch_file": "docs/review/author.md",
-  "trigger_tag": "[REVIEW_NEEDED]",
-  "agree_tag": "[APPROVED]",
-  "pending_tag": "[CHANGES_REQUESTED]"
+  "plugin": { "locale": "en" },
+  "consensus": {
+    "watch_file": "docs/review/author.md",
+    "trigger_tag": "[REVIEW_NEEDED]",
+    "agree_tag": "[APPROVED]",
+    "pending_tag": "[CHANGES_REQUESTED]"
+  }
 }
 ```
 
 ---
 
-## Contributors
+## Contributing
 
 | Contributor | Contributions |
 |---|---|
-| [@berrzebb](https://github.com/berrzebb) | Core architecture, async audit, streaming, i18n, HITL gate |
-| [@dandacompany](https://github.com/dandacompany) | Security fixes (#1 shell injection, #2 plugin support), v5 locale path traversal + ESM require fix |
+| [@berrzebb](https://github.com/berrzebb) | Core architecture, RTM system, MCP tools, multi-agent orchestration |
+| [@dandacompany](https://github.com/dandacompany) | Security fixes (#1 shell injection, #2 plugin support), locale path traversal + ESM require fix |
+
+---
+
+## License
+
+MIT
