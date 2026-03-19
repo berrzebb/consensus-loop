@@ -138,6 +138,12 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 *The independent auditor (GPT/Codex) issues `[CHANGES_REQUESTED]` citing a missing test file and scope mismatch. The second audit independently verifies RTM rows — "The files and tests cited by the RTM do exist." The agent then performs retrospective on the rejection, identifying what went wrong and what to improve.*
 
+**Emergent double verification — main-branch audit catches what worktree verification missed:**
+
+![Second audit classifies 5 rejections into infrastructure issues (CC-2/CV stale) vs substantive code issues (CC-1 claim-code mismatch), with correction plan](assets/double-verification-evidence.png)
+
+*The main-branch audit discovers 3 substantive CC-1 issues that passed worktree-local verification: has_role gating mismatch, BMS25 score initialization, ordinal rank seed. This is the emergent double verification in action — two structurally independent verification passes catch different failure classes.*
+
 ---
 
 ## Lightweight Entry: Audit Gate Only
