@@ -906,7 +906,7 @@ function handleRequest(req) {
   switch (req.method) {
     case "initialize":
       return {
-        protocolVersion: "2024-11-05",
+        protocolVersion: "2025-03-26",
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
       };
