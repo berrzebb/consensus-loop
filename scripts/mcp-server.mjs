@@ -557,8 +557,8 @@ function parseRtmTable(content) {
       inTable = true;
       continue;
     }
-    // Skip separator
-    if (inTable && cells.every(c => /^[-:]+$/.test(c))) continue;
+    // Skip separator (---|---|--- rows, may have empty cells from split)
+    if (inTable && cells.every(c => c === "" || /^[-:]+$/.test(c))) continue;
 
     if (!inTable) continue;
 
@@ -752,8 +752,8 @@ function toolRtmParse(params) {
       headerLine = i;
       continue;
     }
-    // Skip separator
-    if (headerLine >= 0 && cells.every(c => /^[-:]+$/.test(c))) continue;
+    // Skip separator (---|---|--- rows, may have empty cells from split)
+    if (headerLine >= 0 && cells.every(c => c === "" || /^[-:]+$/.test(c))) continue;
     if (headerLine < 0) continue;
 
     // Build row object
