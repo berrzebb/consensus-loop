@@ -26,7 +26,7 @@
 
   "consensus": {
     "_readme": "watch_file is resolved relative to the plugin directory first, then the repo root. All other paths (planning_files, planning_dirs) are repo-root relative.",
-    "watch_file": "feedback/claude.md",
+    "watch_file": "docs/feedback/claude.md",
     "trigger_tag": "[REVIEW_NEEDED]",
     "agree_tag": "[APPROVED]",
     "pending_tag": "[CHANGES_REQUESTED]",
