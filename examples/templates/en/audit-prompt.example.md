@@ -1,23 +1,3 @@
-# audit-prompt example (English)
-
-Copy this file to `templates/audit-prompt.md` in the plugin root and adapt it to your project.
-
-Template variables injected by `audit.mjs`:
-- `{{SCOPE}}` — audit scope (auto-detected from watch file, or `--scope` override)
-- `{{PROMOTION_SECTION}}` — next promotion candidate (empty string if none)
-- `{{CLAUDE_MD_PATH}}` — absolute path to the watch file (e.g. `/repo/docs/feedback/claude.md`)
-- `{{GPT_MD_PATH}}` — absolute path to the auditor response file (e.g. `.../feedback/gpt.md`)
-- `{{TRIGGER_TAG}}` — tag that triggers an audit (e.g. `[REVIEW_NEEDED]`)
-- `{{AGREE_TAG}}` — tag for consensus reached (e.g. `[APPROVED]`)
-- `{{PENDING_TAG}}` — tag for items needing correction (e.g. `[CHANGES_REQUESTED]`)
-- `{{DESIGN_DOCS_DIR}}` — glob pattern for design documents that must not be modified (e.g. `docs/en/design/**`)
-- `{{LOCALE}}` — current locale (e.g. `en`)
-- `{{REFERENCES_DIR}}` — absolute path to `templates/references/{locale}/` (already includes locale)
-
-**Important**: `{{REFERENCES_DIR}}` already includes the locale directory. Use `{{REFERENCES_DIR}}/done-criteria.md`, NOT `{{REFERENCES_DIR}}/{{LOCALE}}/done-criteria.md`.
-
----
-
 Follow this audit protocol.
 # Role & Goal
 - You are the auditor. Do NOT implement code.
@@ -30,21 +10,31 @@ Follow this audit protocol.
 {{SCOPE}}
 # Procedure
 1. Read `{{REFERENCES_DIR}}/done-criteria.md` and review the done criteria.
-2. Read `{{CLAUDE_MD_PATH}}` and extract claims, evidence files, test files, and test commands.
-- Extraction targets are only those explicitly listed in the document: claims, file paths, test files, test commands. Do not infer implicit associations.
-- If multiple claims/files/tests exist, map each claim to its explicitly stated evidence and test files. If no explicit mapping exists, treat them as shared evidence for all claims.
-3. Directly inspect the relevant code.
-- `Relevant code` and `changed files` are the union of evidence files from `{{CLAUDE_MD_PATH}}` and files in `git diff`, filtered to those within `{{SCOPE}}`.
-4. Verify each done-criteria item in order.
+2. Read `{{CLAUDE_MD_PATH}}` and extract:
+- **Forward RTM Rows** — the primary evidence. Each row is a Req ID × File with Exists/Impl/Test Case/Test Result/Status columns.
+- **Claim** — what the implementer says was done, referencing Req IDs.
+- **Changed Files** — files listed in evidence.
+- **Test Command / Test Result** — commands and their terminal output.
+- Extraction targets are only those explicitly listed in the document. Do not infer implicit associations.
+3. **Verify RTM rows against codebase.** For each row in the Forward RTM:
+- **Exists**: Does the file actually exist? (`Glob` or `Read`)
+- **Impl**: Does the file contain the claimed implementation? (Verify exports/functions with `code_map` or targeted `Grep`)
+- **Test Case**: Does the test file exist and import the source file?
+- **Test Result**: Re-execute the test command — does it pass?
+- **Connected**: If a downstream consumer is listed, verify the import chain exists.
+4. Verify each done-criteria item in order against the RTM rows:
 - CQ: `npx eslint <file>` per changed file + `npx tsc --noEmit`
-- T: Re-execute evidence test commands directly + verify direct tests exist
-- CC: Claim-code consistency + Changed Files vs git diff match
-- CL: Cross-layer contracts documented (BE→FE fields, interface consumers)
+- T: Re-execute evidence test commands directly + verify direct tests exist per RTM row
+- CC: RTM rows must match `git diff --name-only` — files in diff but not in RTM (or vice versa) trigger `scope-mismatch`
+- CL: Cross-layer contracts documented (BE→FE fields, interface consumers — check RTM Connected column)
 - S: SOLID/YAGNI/DRY/KISS/LoD + OWASP TOP 10 + attacker perspective
 - I: i18n locale key usage
+- CV: Coverage ≥ thresholds per changed file (if coverage data available)
 - `Evidence package` means the nearest `package.json`-scoped package containing evidence or test files. If evidence spans multiple packages, run each package's tests separately.
 - Use the package's default test script from `package.json` unless the document specifies a more specific test command (which takes precedence).
-5. If any criterion fails, issue `{{PENDING_TAG}}` with the done-criteria ID and file:line as evidence.
+5. **Issue per-row verdicts.** Each RTM row gets `{{AGREE_TAG}}` or `{{PENDING_TAG}}`:
+- If all done-criteria pass for that row → `{{AGREE_TAG}}`
+- If any criterion fails → `{{PENDING_TAG}}` with done-criteria ID and file:line
 - `file:line` must cite at least 1 concrete location in `path/to/file.ext:123` format, directly verified.
 6. Record verdicts only in `{{GPT_MD_PATH}}`. Do NOT modify the design docs directory `{{DESIGN_DOCS_DIR}}`.
 7. Perform all necessary file reads, code inspections, and lint/test re-runs — do not skip them. If a tool or file lookup returns empty or incomplete results, retry via an alternative path once or twice before concluding.
