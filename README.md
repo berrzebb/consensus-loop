@@ -132,6 +132,12 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 *The orchestrator triggers `/consensus-audit`. The agent recognizes that retrospective must wait for `[APPROVED]` verdict (retro-marker.json → session-gate.mjs). Structural guardrails enforce protocol order — the agent cannot skip ahead.*
 
+**Cross-model audit verdict — [CHANGES_REQUESTED] with specific evidence:**
+
+![GPT/Codex auditor issues CHANGES_REQUESTED verdict citing missing file and scope mismatch, while independently verifying RTM rows](assets/auditor-changes-requested.png)
+
+*The independent auditor (GPT/Codex) issues `[CHANGES_REQUESTED]` citing a missing test file and scope mismatch. The second audit independently verifies RTM rows — "The files and tests cited by the RTM do exist." The agent then performs retrospective on the rejection, identifying what went wrong and what to improve.*
+
 ---
 
 ## Lightweight Entry: Audit Gate Only
