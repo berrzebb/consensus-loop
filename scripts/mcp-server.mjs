@@ -828,7 +828,7 @@ function toolAuditHistory(params) {
   const fullPath = historyPath ? resolve(historyPath) : defaultPath;
 
   if (!existsSync(fullPath)) {
-    return { error: `No audit history found at ${fullPath}. Audit history is written by respond.mjs after each verdict.` };
+    return { text: `No audit history yet. The file ${fullPath} will be created automatically after the first audit verdict (respond.mjs appends to it).`, summary: "0 entries", json: { total: 0 } };
   }
 
   // Parse JSONL
