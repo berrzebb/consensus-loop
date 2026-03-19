@@ -534,6 +534,291 @@ function toolDependencyGraph(params) {
   return result;
 }
 
+// ═══ Tool: rtm_merge ════════════════════════════════════════════════════
+
+/**
+ * Parse an RTM markdown table into rows keyed by "ReqID|File".
+ * Returns Map<string, { cells: string[], raw: string }>.
+ */
+function parseRtmTable(content) {
+  const rows = new Map();
+  const lines = content.split(/\r?\n/);
+  let inTable = false;
+  let headerCols = [];
+
+  for (const line of lines) {
+    if (!line.startsWith("|")) { inTable = false; continue; }
+
+    const cells = line.split("|").map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length);
+
+    // Detect header row
+    if (!inTable && cells.some(c => /Req\s*ID/i.test(c))) {
+      headerCols = cells;
+      inTable = true;
+      continue;
+    }
+    // Skip separator
+    if (inTable && cells.every(c => /^[-:]+$/.test(c))) continue;
+
+    if (!inTable) continue;
+
+    // Find Req ID and File columns
+    const reqIdx = headerCols.findIndex(c => /Req\s*ID/i.test(c));
+    const fileIdx = headerCols.findIndex(c => /^File$/i.test(c));
+    if (reqIdx < 0 || fileIdx < 0 || reqIdx >= cells.length || fileIdx >= cells.length) continue;
+
+    const key = `${cells[reqIdx]}|${cells[fileIdx]}`;
+    rows.set(key, { cells, raw: line });
+  }
+  return rows;
+}
+
+function toolRtmMerge(params) {
+  const { base, updates } = params;
+  if (!base) return { error: "base path is required" };
+  if (!updates || !Array.isArray(updates) || updates.length === 0) {
+    return { error: "updates array is required (paths to worktree RTM files)" };
+  }
+
+  // Load base RTM
+  const basePath = resolve(base);
+  if (!existsSync(basePath)) return { error: `Base RTM not found: ${base}` };
+  const baseContent = readFileSync(basePath, "utf8");
+  const baseRows = parseRtmTable(baseContent);
+
+  // Load and merge updates
+  const merged = new Map(baseRows);
+  const conflicts = [];
+  const additions = [];
+  const updates_applied = [];
+  const sourceMap = new Map(); // key → source file
+
+  for (const updatePath of updates) {
+    const fullPath = resolve(updatePath);
+    if (!existsSync(fullPath)) {
+      conflicts.push({ path: updatePath, error: "file not found" });
+      continue;
+    }
+    const updateContent = readFileSync(fullPath, "utf8");
+    const updateRows = parseRtmTable(updateContent);
+
+    for (const [key, row] of updateRows) {
+      if (!merged.has(key)) {
+        // New row (discovered by worker)
+        merged.set(key, row);
+        sourceMap.set(key, updatePath);
+        additions.push({ key, source: updatePath });
+      } else {
+        const existing = merged.get(key);
+        // Check if this row was already modified by another update
+        if (sourceMap.has(key) && sourceMap.get(key) !== updatePath) {
+          // Conflict — two workers modified the same row
+          conflicts.push({
+            key,
+            sources: [sourceMap.get(key), updatePath],
+            base: existing.raw,
+            update: row.raw,
+          });
+        } else if (existing.raw !== row.raw) {
+          // Updated by this worker — apply
+          merged.set(key, row);
+          sourceMap.set(key, updatePath);
+          updates_applied.push({ key, source: updatePath });
+        }
+      }
+    }
+  }
+
+  // Build output
+  const output = [];
+  output.push("## RTM Merge Result\n");
+  output.push(`- Base: ${base}`);
+  output.push(`- Updates: ${updates.length} files`);
+  output.push(`- Rows: ${merged.size} total, ${updates_applied.length} updated, ${additions.length} added, ${conflicts.length} conflicts\n`);
+
+  if (conflicts.length > 0) {
+    output.push("### Conflicts (require manual resolution)\n");
+    for (const c of conflicts) {
+      if (c.error) {
+        output.push(`- **${c.path}**: ${c.error}`);
+      } else {
+        output.push(`- **${c.key}**: modified by \`${c.sources[0]}\` and \`${c.sources[1]}\``);
+        output.push(`  - Source 1: ${c.base}`);
+        output.push(`  - Source 2: ${c.update}`);
+      }
+    }
+    output.push("");
+  }
+
+  if (updates_applied.length > 0) {
+    output.push("### Updated Rows\n");
+    output.push("| Req ID | File | Source |");
+    output.push("|--------|------|--------|");
+    for (const u of updates_applied) {
+      const [reqId, file] = u.key.split("|");
+      const rel = relative(process.cwd(), u.source).replace(/\\/g, "/");
+      output.push(`| ${reqId} | ${file} | ${rel} |`);
+    }
+    output.push("");
+  }
+
+  if (additions.length > 0) {
+    output.push("### New Rows (discovered)\n");
+    output.push("| Req ID | File | Source |");
+    output.push("|--------|------|--------|");
+    for (const a of additions) {
+      const [reqId, file] = a.key.split("|");
+      const rel = relative(process.cwd(), a.source).replace(/\\/g, "/");
+      output.push(`| ${reqId} | ${file} | ${rel} |`);
+    }
+    output.push("");
+  }
+
+  // Merged table
+  output.push("### Merged Forward RTM\n");
+  // Reconstruct table from merged rows
+  const allRows = [...merged.values()];
+  if (allRows.length > 0) {
+    const colCount = allRows[0].cells.length;
+    // Use first row's cell count for header
+    output.push("| " + allRows[0].cells.map((_, i) => {
+      const headers = ["Req ID", "Description", "Track", "Design Ref", "File", "Exists", "Impl", "Test Case", "Test Result", "Connected", "Status"];
+      return headers[i] || `Col${i}`;
+    }).join(" | ") + " |");
+    output.push("|" + allRows[0].cells.map(() => "---").join("|") + "|");
+    for (const row of allRows) {
+      output.push(row.raw);
+    }
+  }
+
+  return {
+    text: output.join("\n"),
+    summary: `${merged.size} rows, ${updates_applied.length} updated, ${additions.length} added, ${conflicts.length} conflicts`,
+    json: {
+      total: merged.size,
+      updated: updates_applied.length,
+      added: additions.length,
+      conflicts: conflicts.length,
+    },
+  };
+}
+
+// ═══ Tool: rtm_parse ════════════════════════════════════════════════════
+
+function toolRtmParse(params) {
+  const { path: targetPath, matrix = "forward", req_id, status: statusFilter } = params;
+  if (!targetPath) return { error: "path is required" };
+
+  const fullPath = resolve(targetPath);
+  if (!existsSync(fullPath)) return { error: `Not found: ${targetPath}` };
+
+  const content = readFileSync(fullPath, "utf8");
+  const lines = content.split(/\r?\n/);
+
+  // Find the target matrix section
+  const matrixPatterns = {
+    forward:       /^##\s+(?:순방향|Forward)\s+RTM/i,
+    backward:      /^##\s+(?:역방향|Backward)\s+RTM/i,
+    bidirectional: /^##\s+(?:양방향|Bidirectional)\s+RTM/i,
+  };
+  const sectionRe = matrixPatterns[matrix];
+  if (!sectionRe) return { error: `Unknown matrix type: ${matrix}. Use: forward, backward, bidirectional` };
+
+  // Find section start
+  let sectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (sectionRe.test(lines[i].trim())) { sectionStart = i; break; }
+  }
+  // If no section header found, try parsing the whole file as a table
+  const searchStart = sectionStart >= 0 ? sectionStart : 0;
+
+  // Find table within section
+  let headerLine = -1;
+  let headerCols = [];
+  const rows = [];
+
+  for (let i = searchStart; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Stop at next section (## heading) after we started
+    if (i > searchStart && /^##\s+/.test(line) && sectionStart >= 0) break;
+
+    if (!line.startsWith("|")) continue;
+    const cells = line.split("|").map(c => c.trim()).filter((_, idx, a) => idx > 0 && idx < a.length);
+
+    // Detect header
+    if (headerLine < 0 && cells.some(c => /Req\s*ID|Test\s*File/i.test(c))) {
+      headerCols = cells;
+      headerLine = i;
+      continue;
+    }
+    // Skip separator
+    if (headerLine >= 0 && cells.every(c => /^[-:]+$/.test(c))) continue;
+    if (headerLine < 0) continue;
+
+    // Build row object
+    const row = {};
+    for (let j = 0; j < headerCols.length && j < cells.length; j++) {
+      const key = headerCols[j]
+        .toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-z0-9_]/g, "");
+      row[key] = cells[j];
+    }
+    rows.push(row);
+  }
+
+  // Apply filters
+  let filtered = rows;
+  if (req_id) {
+    filtered = filtered.filter(r => (r.req_id || "").includes(req_id));
+  }
+  if (statusFilter) {
+    filtered = filtered.filter(r => (r.status || "").toLowerCase() === statusFilter.toLowerCase());
+  }
+
+  // Format output
+  const output = [];
+  output.push(`## ${matrix} RTM — ${filtered.length} rows${req_id ? ` (filtered: ${req_id})` : ""}${statusFilter ? ` (status: ${statusFilter})` : ""}\n`);
+
+  if (filtered.length === 0) {
+    output.push("No matching rows found.");
+  } else {
+    // Rebuild table
+    output.push("| " + headerCols.join(" | ") + " |");
+    output.push("|" + headerCols.map(() => "---").join("|") + "|");
+    for (const row of filtered) {
+      const cells = headerCols.map(h => {
+        const key = h.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+        return row[key] || "—";
+      });
+      output.push("| " + cells.join(" | ") + " |");
+    }
+
+    // Summary stats
+    if (matrix === "forward") {
+      const statuses = {};
+      for (const r of filtered) {
+        const s = (r.status || "unknown").toLowerCase();
+        statuses[s] = (statuses[s] || 0) + 1;
+      }
+      output.push("");
+      output.push("**Status summary**: " + Object.entries(statuses).map(([k, v]) => `${k}: ${v}`).join(", "));
+    }
+  }
+
+  return {
+    text: output.join("\n"),
+    summary: `${filtered.length}/${rows.length} rows`,
+    json: {
+      matrix,
+      total: rows.length,
+      filtered: filtered.length,
+      rows: filtered,
+    },
+  };
+}
+
 // ═══ MCP Protocol ═══════════════════════════════════════════════════════
 
 const SERVER_INFO = { name: "consensus-loop", version: "2.3.0" };
@@ -576,6 +861,32 @@ const TOOLS = [
         extensions: { type: "string", description: "File extensions (default: .ts,.tsx,.js,.jsx,.mjs,.mts)" },
       },
       required: ["path"],
+    },
+  },
+  {
+    name: "rtm_parse",
+    description: "Parse an RTM markdown file and return structured rows. Supports forward, backward, and bidirectional matrices. Filter by Req ID or status. Use to read RTM state, distribute rows to workers, or verify row updates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path:   { type: "string", description: "Path to RTM markdown file" },
+        matrix: { type: "string", enum: ["forward", "backward", "bidirectional"], description: "Which matrix to parse (default: forward)" },
+        req_id: { type: "string", description: "Filter rows by Req ID prefix (e.g., 'EV-1')" },
+        status: { type: "string", description: "Filter rows by status (e.g., 'open', 'fixed', 'verified')" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "rtm_merge",
+    description: "Merge multiple worktree RTM files into a base RTM. Row-level merge by Req ID × File key. Detects conflicts (same row modified by two workers), applies non-conflicting updates, and appends discovered rows. Use after parallel workers complete, before squash merge.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base:    { type: "string", description: "Path to the base RTM file (main repo)" },
+        updates: { type: "array", items: { type: "string" }, description: "Paths to worktree RTM files to merge" },
+      },
+      required: ["base", "updates"],
     },
   },
   {
@@ -630,6 +941,22 @@ function handleRequest(req) {
         }
         const tag = result.cached ? " [cached]" : "";
         return { content: [{ type: "text", text: `${result.text}\n\n(${result.summary}${tag})` }] };
+      }
+
+      if (name === "rtm_parse") {
+        const result = toolRtmParse(args || {});
+        if (result.error) {
+          return { content: [{ type: "text", text: result.error }], isError: true };
+        }
+        return { content: [{ type: "text", text: `${result.text}\n\n(${result.summary})` }] };
+      }
+
+      if (name === "rtm_merge") {
+        const result = toolRtmMerge(args || {});
+        if (result.error) {
+          return { content: [{ type: "text", text: result.error }], isError: true };
+        }
+        return { content: [{ type: "text", text: `${result.text}\n\n(${result.summary})` }] };
       }
 
       if (name === "coverage_map") {
