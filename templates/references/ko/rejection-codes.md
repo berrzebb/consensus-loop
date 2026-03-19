@@ -1,31 +1,49 @@
-# 반려 코드 정의
+# Rejection Codes
 
-> 이 파일을 수정하여 프로젝트에 맞는 반려 기준을 조정하세요.
+> Modify this file to adjust rejection criteria for your project.
 
-## 코드 목록
+## Code List
 
-| 코드 | 설명 | 심각도 기준 |
-|------|------|------------|
-| `needs-evidence` | 증거 패키지 없거나 약함 | `[major]`: 핵심 claim 근거 부재 / `[minor]`: 부분 누락 |
-| `scope-mismatch` | claim과 실제 코드 불일치 | `[major]`: 핵심 경로 불일치 / `[minor]`: 문서 표현 차이 |
-| `lint-gap` | lint 미실행 또는 실패 | `[major]`: exit code ≠ 0 |
-| `test-gap` | 테스트 부재 또는 불충분 | `[major]`: 핵심 경로 미검증 / `[minor]`: 경계 케이스 누락 |
-| `claim-drift` | 문서와 코드 동작 불일치 | `[major]`: 동작 차이 / `[minor]`: 문서 오타 |
-| `principle-drift` | SOLID/YAGNI/DRY/KISS/LoD 구조 회귀 | `[major]`: 구조적 회귀 / `[minor]`: 경미한 위반 |
-| `security-drift` | OWASP TOP 10 위반 또는 공격자 관점 취약점 | `[major]`: 항상 |
-| `coverage-gap` | 변경 파일 커버리지 threshold 미달 | `[major]`: stmt < 85% 또는 branch < 75% / `[minor]`: threshold 5% 이내 |
+| Code | Description | Severity Criteria | Risk Level |
+|------|-------------|-------------------|------------|
+| `needs-evidence` | Evidence package missing or weak | `[major]`: core claim unsupported / `[minor]`: partial gaps | low |
+| `scope-mismatch` | Claim vs actual code mismatch | `[major]`: critical path mismatch / `[minor]`: doc wording diff | medium |
+| `lint-gap` | Lint not run or failed | `[major]`: exit code ≠ 0 | low |
+| `test-gap` | Tests missing or insufficient | `[major]`: critical path untested / `[minor]`: edge case missing | medium |
+| `claim-drift` | Doc and code behavior diverge | `[major]`: behavioral diff / `[minor]`: doc typo | low |
+| `principle-drift` | SOLID/YAGNI/DRY/KISS/LoD structural regression | `[major]`: structural regression / `[minor]`: minor violation | medium |
+| `security-drift` | OWASP TOP 10 violation or attacker-perspective vulnerability | `[major]`: always | **critical** |
+| `coverage-gap` | Changed file coverage below threshold | `[major]`: stmt < 85% or branch < 75% / `[minor]`: within 5% of threshold | low |
 
-## 사용 규칙
+## Risk Levels
 
-- `{{PENDING_TAG}}` 판정 시 1~3개 선택, 심각도 `[major]`/`[minor]` 필수 병기.
-- `[major]`: 다음 라운드 `{{AGREE_TAG}}` 불가.
-- `[minor]`: 수정 확인 후 pass 허용.
-- `lint-gap` 사용 시 구체 지점(파일:L{line} + 오류 메시지) 필수. "N건" 요약 금지.
+| Level | Meaning | Accumulation Action |
+|-------|---------|--------------------|
+| **low** | Isolated issue, fix and move on | No escalation |
+| **medium** | Pattern risk — may indicate structural problem | 3+ medium rejections on same track → warn orchestrator |
+| **high** | Cross-track impact or regression risk | Block downstream tracks until resolved |
+| **critical** | Security vulnerability or data integrity risk | Block entire track, escalate to user immediately |
 
-## 구체 지점 형식
+## Risk Pattern Detection
 
-반려 시 `## 구체 지점` 섹션에 정확한 위치를 인용:
+The orchestrator should monitor rejection patterns across rounds:
+
+- **Same code on same file 2+ rounds** → escalate from low to medium (approach needs rethinking)
+- **Same rejection code 3+ times on same track** → structural issue, suggest planner re-scoping
+- **`security-drift` on any round** → auto-escalate to critical, block track
+- **`test-gap` + `coverage-gap` on same file** → compound risk, flag for review
+
+## Usage Rules
+
+- Select 1–3 codes on `{{PENDING_TAG}}` verdict. Severity `[major]`/`[minor]` required.
+- `[major]`: blocks `{{AGREE_TAG}}` in next round.
+- `[minor]`: passable after fix confirmation.
+- `lint-gap` requires specific location (file:L{line} + error message). Summary-only ("N issues") not allowed.
+
+## Specific Location Format
+
+On rejection, cite exact locations in `## Specific Locations`:
 ```
-- `src/routes/resource.ts:L42` — claim은 require_admin이지만 실제는 require_member
-- `tests/resource.test.ts:L85` — member 200만 검증, admin 403 미검증
+- `src/routes/resource.ts:L42` — claim says require_admin but actual is require_member
+- `tests/resource.test.ts:L85` — verifies member 200 only, missing admin 403
 ```

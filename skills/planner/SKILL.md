@@ -57,13 +57,45 @@ Present the results to the user:
 
 **Wait for the user to confirm or adjust** before proceeding.
 
+## Phase 2.5: Change Impact Analysis
+
+For each file the proposed work will modify, run impact analysis **before** generating the work-breakdown:
+
+```
+dependency_graph({ path: "src/<target-dir>/" })
+→ "Imported By" column shows every file that depends on targets
+```
+
+For each target file, classify the impact:
+
+| Impact Level | Criteria | Action |
+|-------------|---------|--------|
+| **Low** | File is a leaf — nothing imports it | Proceed normally |
+| **Medium** | 1-3 files import it, same track | Note in WB prerequisites |
+| **High** | 4+ files import it, or cross-track consumers exist | Warn user, require explicit confirmation |
+| **Critical** | File is imported by 3+ tracks, or is a port/interface | Escalate — may need design review before planning |
+
+Present the impact analysis:
+
+> "Impact analysis for the proposed changes:
+> - `src/orchestration/gateway-contracts.ts` → **Critical**: imported by PA(6), SO(9), GW(7). Changes here affect 3 tracks.
+> - `src/evals/runner.ts` → **Medium**: imported by `guardrail-executor.ts` (EG-5, cross-track).
+> - `src/evals/loader.ts` → **Low**: leaf file, only consumed within evaluation-pipeline.
+>
+> Recommendation: split `gateway-contracts.ts` changes into a separate WB item with its own verification."
+
+**Wait for user to acknowledge high/critical impacts** before proceeding.
+
 ## Phase 3: Check Conflicts
 
 Before generating, verify against existing plans:
 
 1. Read `execution-order.md` — does this track already exist? Does it conflict with another?
 2. Read `work-catalog.md` — are any of the proposed WB items already covered?
-3. Check downstream impact — will this change break existing track dependencies?
+3. **Check downstream impact** — use Phase 2.5 results:
+   - High/Critical impact files → verify downstream tracks have regression tests
+   - Cross-track consumers → check if those tracks are `verified` in RTM (breaking a verified track is a major risk)
+   - Orphan connections → flag files that *should* have consumers but don't
 
 If conflicts found, present them:
 
