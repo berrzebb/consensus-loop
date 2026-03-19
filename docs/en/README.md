@@ -42,10 +42,11 @@ consensus-loop/
 │   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
 │
 ├── scripts/               ← Deterministic tools + MCP server
-│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
+│   ├── mcp-server.mjs     ← MCP server: 7 tools (code_map, dependency_graph, audit_scan, coverage_map, rtm_parse, rtm_merge, audit_history)
 │   ├── code-map.mjs       ← Symbol index generator
 │   ├── audit-scan.mjs     ← Pattern scanner
 │   ├── coverage-mapper.mjs← Coverage → RTM mapper
+│   ├── enforcement.mjs    ← Structural enforcement (upstream delay, tech debt, FP detection)
 │   └── add-locale-key.mjs ← Locale key helper
 │
 ├── commands/              ← CLI commands (auto-discovered)
@@ -71,7 +72,8 @@ consensus-loop/
 │   ├── retro-prompt.md    ← Facade → references
 │   └── references/{ko,en}/  ← 10 team policy files × 2 languages
 │
-├── tests/
+├── tests/                ← Plugin unit/integration tests (Node.js built-in runner)
+├── test-harness/         ← Isolated TypeScript project for full-cycle validation (44 tests, 10 scenarios)
 ├── plans/
 ├── examples/
 │

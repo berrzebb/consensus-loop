@@ -5,13 +5,13 @@
 
 ---
 
-## ✅ Implemented (v2.3.0)
+## ✅ Implemented (v2.4.0)
 
 | Feature | Description |
 |---------|-------------|
 | Multi-agent orchestration | Orchestrator distributes to worktree-isolated implementers |
 | Scout + 3-way RTM | Forward/Backward/Bidirectional traceability matrices |
-| 6 MCP tools | code_map, dependency_graph, audit_scan, coverage_map, rtm_parse, rtm_merge |
+| 7 MCP tools | code_map, dependency_graph, audit_scan, coverage_map, rtm_parse, rtm_merge, audit_history |
 | Coverage verification (CV) | CV-1~CV-3 done-criteria, coverage-gap rejection code |
 | RTM-based evidence + audit | Per-row verification, per-row verdicts |
 | Change impact analysis | Planner Phase 2.5 — dependency_graph "Imported By" classification |
@@ -20,6 +20,8 @@
 | Interactive planner | 6-phase protocol: intent → research → impact → conflicts → draft → review |
 | Audit history log | Persistent JSONL log + `audit_history` MCP tool with summary/filter/pattern detection |
 | Scout gap report | Phase 7 gap report — unimplemented reqs, orphans, broken links → planner feedback |
+| Structural enforcement | `enforcement.mjs` — upstream delay blocking, tech debt auto-capture, FP rate detection |
+| Test harness | Isolated 3-track TypeScript project (44 tests) — 10 scenarios validate full cycle |
 
 ---
 
@@ -69,7 +71,7 @@ Planner reads the gap report in Phase 2 (Research) and proposes work-breakdown a
 
 **Depends on:** RTM ✅, Planner interactive protocol ✅
 
-### 2. ⚠️ Retrospective → Rejection Code Improvement Loop — protocol defined
+### 2. ✅ Retrospective → Rejection Code Improvement Loop — implemented + validated
 
 **Problem:** Auditor issues false positives (rejects correct code) or false negatives (approves buggy code). Currently no mechanism to track or correct this.
 
@@ -82,9 +84,11 @@ Planner reads the gap report in Phase 2 (Research) and proposes work-breakdown a
 
 Accumulate in audit-history.jsonl. When a rejection code has >30% false positive rate across 10+ rounds, flag for policy file review (rejection-codes.md or test-checklist.md).
 
-**Depends on:** Audit history log 🔜, Retrospective protocol ✅
+**Depends on:** Audit history log ✅, Retrospective protocol ✅
 
-### 3. ⚠️ Upstream Delay → Downstream Auto-Notification — protocol defined
+**Implementation:** `scripts/enforcement.mjs` → `checkFalsePositiveRate()`. Flags rejection codes with >30% FP rate across 3+ rounds. Validated in test-harness (Scenario 10) and unit tests (20/20 pass).
+
+### 3. ✅ Upstream Delay → Downstream Auto-Notification — implemented + validated
 
 **Problem:** When parallel tracks execute, an upstream track's repeated rejection or timeout blocks downstream tracks. Currently the orchestrator discovers this only when it tries to spawn the downstream worker.
 
@@ -93,7 +97,9 @@ Accumulate in audit-history.jsonl. When a rejection code has >30% false positive
 - If upstream audit exceeds TTL (30 min) → auto-notify downstream as `delayed`
 - Update handoff status: `in-progress` → `blocked (upstream: PA-4 rejected 3x)`
 
-**Depends on:** Audit history log 🔜, Background spawn ✅, Risk pattern detection ✅
+**Depends on:** Audit history log ✅, Background spawn ✅, Risk pattern detection ✅
+
+**Implementation:** `scripts/enforcement.mjs` → `countTrackPendings()` + `blockDownstreamTasks()`. Auto-blocks downstream tasks when upstream track has 3+ pending rejections. Validated in test-harness (Scenario 9): 3× security rejection on AL-1 → AL-2 auto-blocked with reason string.
 
 ### 4. ✅ Project-Level Rejection Pattern Dashboard — implemented
 
@@ -105,7 +111,7 @@ Implemented via `audit_history` MCP tool with `summary: true` mode. Provides:
 
 The `/consensus-status` CLI command also surfaces current state.
 
-### 5. Technical Debt Tracking
+### 5. ✅ Technical Debt Tracking — implemented + validated
 
 **Problem:** Retrospective discovers improvement opportunities, but they're stored in memory (ephemeral) not in work-catalog (actionable). Residual Risk in evidence is unstructured text.
 
@@ -116,6 +122,8 @@ The `/consensus-status` CLI command also surfaces current state.
 - Residual Risk in evidence format → structured: `{ file, description, priority, category }`
 
 **Depends on:** Work-catalog ✅, Retrospective ✅, Scout RTM ✅
+
+**Implementation:** `scripts/enforcement.mjs` → `parseResidualRisk()` + `appendTechDebt()`. Extracts Residual Risk items from evidence, auto-appends to `work-catalog.md` as `type: tech-debt` with duplicate prevention. Validated in test-harness (Scenario 10): 3 items extracted, duplicates correctly skipped.
 
 ---
 
@@ -135,10 +143,12 @@ The `/consensus-status` CLI command also surfaces current state.
 
 ```
 ✅ Audit History Log (infra) — implemented
-    ├─→ ⚠️ Rejection Code Improvement Loop (2) — protocol defined, needs structural enforcement
-    ├─→ ⚠️ Upstream Delay Notification (3) — protocol defined, needs structural enforcement
+    ├─→ ✅ Rejection Code Improvement Loop (2) — implemented + test-harness validated
+    ├─→ ✅ Upstream Delay Notification (3) — implemented + test-harness validated
     ├─→ ✅ Rejection Pattern Dashboard (4) — implemented (audit_history --summary)
-    └─→ ⚠️ Technical Debt Tracking (5) — protocol defined, needs structural enforcement
+    └─→ ✅ Technical Debt Tracking (5) — implemented + test-harness validated
 
 ✅ Scout → Planner Reverse Feedback (1) — implemented (Phase 7 Gap Report)
+
+✅ Test Harness (validation) — 10 scenarios, 44 tests, 3 planted defects all caught
 ```

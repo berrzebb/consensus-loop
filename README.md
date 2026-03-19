@@ -172,6 +172,84 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 ---
 
+## Full Cycle Walkthrough (Test Harness)
+
+The test harness is a standalone TypeScript project (3 tracks, 9 work-breakdowns, 44 tests) built to validate every stage of the protocol in isolation. Each screenshot below shows a real execution — not a mockup.
+
+### Phase 1: Plan — Requirements + Track Design
+
+The planner defines tracks with dependency ordering, work-breakdown items per track, verification scenarios, and intentionally planted defects for audit rejection testing.
+
+![Requirements definition showing 3 tracks (data-layer → service-layer → api-layer), 10 verification scenarios, and 3 planted defects mapped to specific WBs](assets/th-01-harness-requirements.png)
+
+*3 tracks with sequential dependency (data → service → api), 9 work-breakdown items, 10 scenarios covering the full cycle. 3 planted defects (test-gap, security-drift, scope-mismatch) are assigned to specific WBs — the auditor must catch all three.*
+
+### Phase 2: Build — Project Scaffold + Quality Gates
+
+The implementer creates the project structure, implements source code, and passes all quality gates (tsc, eslint, vitest) before entering the consensus cycle.
+
+![Project structure showing src/data, src/service, src/api with 34 passing tests, file tree, and planted defect table](assets/th-02-project-complete.png)
+
+*The project is a real TypeScript codebase — not stubs. 34 tests pass across 3 test files. The defect table maps each planted issue to its WB, expected rejection code, and exact file location.*
+
+### Phase 3: Scout — Deterministic RTM Generation
+
+The scout uses MCP tools (`code_map`, `dependency_graph`) to analyze the codebase and generate 3-way Requirements Traceability Matrices — Forward, Backward, and Bidirectional.
+
+![Scout executes code_map (17 symbols across 9 files) and dependency_graph (9 components), analyzing the actual codebase via MCP tools](assets/th-03-scout-mcp-tools.png)
+
+*No LLM inference at this stage — only deterministic tools. `code_map` extracts 17 symbols (functions, classes, interfaces, types) with exact line ranges. `dependency_graph` maps import chains and connected components. These facts feed the RTM.*
+
+![Forward RTM with 4 rows for data-layer showing Exists/Impl/Test Case/Connected columns, Backward RTM tracing 3 test files to requirements, Bidirectional summary](assets/th-04-rtm-matrices.png)
+
+*Forward RTM maps each Req ID to its implementation file, verification status, test case, and downstream consumer. Backward RTM traces each test file back to its requirement — detecting orphan tests. The bidirectional summary reveals gaps: SL-2 has no direct test (the planted defect).*
+
+### Phase 4: Audit — Cross-Model Rejection
+
+The auditor (GPT/Codex) independently verifies each RTM row. When evidence claims don't match the codebase, specific rejection codes are issued with file:line evidence.
+
+![Auditor issues CHANGES_REQUESTED for SL-2 with rejection code test-gap, while SL-1 and SL-3 pass independently](assets/th-05-audit-test-gap-rejection.png)
+
+*SL-2 claimed `fixed` status but `tests/service/validator.test.ts` does not exist — T-1 violation. The auditor issues `test-gap` with a Completion Criteria Reset specifying exactly what to fix. SL-1 and SL-3 are judged independently and pass.*
+
+### Phase 5: Correct — SendMessage Reuse + Re-Audit
+
+The orchestrator sends corrections to the existing implementer agent via `SendMessage` (no new spawn). After correction, evidence is resubmitted and re-audited.
+
+![claude.md tag promoted from REVIEW_NEEDED to APPROVED after correction round 2, audit-history.jsonl records both rejection and approval entries](assets/th-06-correction-cycle-approval.png)
+
+*The correction cycle is visible in the diff: `[REVIEW_NEEDED]` → `[APPROVED]` tag promotion. The audit-history.jsonl shows the full trail — round 1 rejected (`test-gap`), round 2 approved. The tag in `claude.md` is promoted by `respond.mjs`, not by the implementer (no self-promotion).*
+
+### Phase 6: Enforce — Scope Validation + Upstream Delay
+
+Structural enforcement runs automatically — not as guidelines but as code. The orchestrator validates scope overlap before parallel distribution, and `enforcement.mjs` auto-blocks downstream tracks when upstream rejection count exceeds threshold.
+
+![dependency_graph + Grep reveals error-handler.ts imports Response/RouteHandler from routes.ts — scope overlap detected, parallel spawn blocked](assets/th-07-scope-overlap-validation.png)
+
+*AL-1 (routes.ts) and AL-2 (error-handler.ts) share types via import. The orchestrator detects this overlap and falls back to sequential execution — preventing merge conflicts that parallel worktrees would cause.*
+
+![3 consecutive security rejections on AL-1 trigger blockDownstreamTasks(), AL-2 status updated to "blocked (upstream delay: AL-1 security rejected 3x)"](assets/th-08-upstream-delay-enforcement.png)
+
+*After 3 consecutive `security` rejections on AL-1, `enforcement.mjs` automatically blocks AL-2 (which depends on AL-1). The handoff is updated with the reason string. This prevents wasted work — downstream agents won't start until the upstream issue is resolved.*
+
+### Results
+
+| Metric | Value |
+|--------|-------|
+| Scenarios executed | 10/10 pass |
+| Planted defects caught | 3/3 (test-gap, security, scope-mismatch) |
+| Correction cycles | 2 (SL-2 test-gap, AL-1 security) |
+| Downstream auto-blocks | 1 (AL-2 blocked by AL-1 upstream delay) |
+| Tech debt auto-captured | 4 items → work-catalog.md |
+| Final test count | 44 pass (4 files) |
+
+```bash
+# Run the test harness yourself
+cd test-harness && npm install && npm run quality
+```
+
+---
+
 ## Lightweight Entry: Audit Gate Only
 
 Don't need the full orchestration? Use just the audit gate:
@@ -227,7 +305,7 @@ retrospective (session-gate enforced) → merge (squash) → handoff → next RT
 | 7 | Frontend (FV) | Page loads, DOM, console errors, build |
 | 8 | Coverage (CV) | Statement ≥ 85%, Branch ≥ 75% per changed file |
 
-### Deterministic MCP Tools (6)
+### Deterministic MCP Tools (7)
 
 These tools provide **facts, not inference** — used by all roles:
 

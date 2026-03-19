@@ -1,0 +1,56 @@
+{
+  "plugin": {
+    "locale": "en",
+    "audit_script": "audit.mjs",
+    "audit_prompt": "templates/audit-prompt.md",
+    "respond_script": "respond.mjs",
+    "respond_file": "gpt.md",
+    "ack_file": "ack.timestamp",
+    "session_file": "session.id",
+    "debug_log": "debug.log",
+    "fix_prompt": "templates/fix-prompt.md",
+    "retro_script": "retrospective.mjs",
+    "retro_prompt": "templates/retro-prompt.md",
+    "handoff_file": ".claude/session-handoff.md",
+    "hooks_enabled": {
+      "audit": true,
+      "session_gate": true,
+      "quality_rules": true,
+      "pre_compact": true
+    }
+  },
+  "consensus": {
+    "watch_file": "docs/feedback/claude.md",
+    "trigger_tag": "[REVIEW_NEEDED]",
+    "agree_tag": "[APPROVED]",
+    "pending_tag": "[CHANGES_REQUESTED]",
+    "planning_dirs": [
+      "docs/design"
+    ],
+    "sections": {
+      "audit_scope": "Audit Scope",
+      "final_verdict": "Final Verdict",
+      "agreed_anchor": "Agreed",
+      "reject_codes": "Rejection Codes",
+      "next_task": "Next Task",
+      "changed_files": "Changed Files"
+    },
+    "doc_patterns": {
+      "empty_markers": "none|n\\/a",
+      "completion_suffix": ":\\s*(done)\\s*\\/?",
+      "no_next_task": "no next task registered"
+    }
+  },
+  "quality_rules": [
+    {
+      "match": { "extension": ".ts", "path_contains": ["/src/"] },
+      "label": "eslint",
+      "command": "npx eslint --no-error-on-unmatched-pattern \"{file}\""
+    },
+    {
+      "match": { "extension": ".ts", "path_contains": ["/src/", "/tests/"] },
+      "label": "typecheck",
+      "command": "npx tsc --noEmit"
+    }
+  ]
+}

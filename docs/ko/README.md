@@ -42,10 +42,11 @@ consensus-loop/
 │   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
 │
 ├── scripts/               ← Deterministic tools + MCP server
-│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
+│   ├── mcp-server.mjs     ← MCP 서버: 7개 도구 (code_map, dependency_graph, audit_scan, coverage_map, rtm_parse, rtm_merge, audit_history)
 │   ├── code-map.mjs       ← Symbol index generator
 │   ├── audit-scan.mjs     ← Pattern scanner
 │   ├── coverage-mapper.mjs← Coverage → RTM mapper
+│   ├── enforcement.mjs    ← 구조적 강제 (upstream delay, tech debt, FP detection)
 │   └── add-locale-key.mjs ← Locale key helper
 │
 ├── commands/              ← CLI commands (auto-discovered)
@@ -77,7 +78,8 @@ consensus-loop/
 │       ├── ko/            ← 한국어 정책
 │       └── en/            ← 영문 정책
 │
-├── tests/
+├── tests/                ← 플러그인 유닛/통합 테스트 (Node.js 빌트인 러너)
+├── test-harness/         ← 격리된 TypeScript 프로젝트 — 전체 사이클 검증 (44 tests, 10 시나리오)
 ├── plans/                 ← 예제 플래닝 문서 (ko/en)
 ├── examples/              ← 예제 config + 템플릿
 │
