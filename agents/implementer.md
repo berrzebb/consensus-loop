@@ -1,7 +1,6 @@
 ---
 name: implementer
 description: Headless worker for consensus-loop — receives task + context, implements code, runs tests, submits evidence to watch file, handles audit corrections. Use when the orchestrator needs to delegate a coding task to a worker agent.
-tools: Read, Edit, Write, Grep, Glob, Bash
 model: claude-sonnet-4-6
 isolation: worktree
 skills:
