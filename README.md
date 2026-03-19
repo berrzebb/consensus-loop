@@ -126,6 +126,12 @@ The scout eliminated redundant exploration — implementers received pre-verifie
 
 *Both parallel workers pass all done-criteria (CQ, T, CC, CL, CV — all PASS, 105 tests including 27 new + 78 regression). The orchestrator integrates evidence from both worktrees and proceeds to audit → retrospective → squash merge.*
 
+**Audit trigger + retrospective gate enforcement:**
+
+![Orchestrator triggers manual audit, agent recognizes retro-marker gate and defers retrospective until after APPROVED verdict](assets/audit-trigger-retro-gate.png)
+
+*The orchestrator triggers `/consensus-audit`. The agent recognizes that retrospective must wait for `[APPROVED]` verdict (retro-marker.json → session-gate.mjs). Structural guardrails enforce protocol order — the agent cannot skip ahead.*
+
 ---
 
 ## Lightweight Entry: Audit Gate Only
