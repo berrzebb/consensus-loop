@@ -199,7 +199,6 @@ The orchestrator **does not spawn a new agent** for corrections. It sends via `S
 | Skill | Purpose | Invocation |
 |-------|---------|------------|
 | `consensus-loop:orchestrator` | Session orchestration — scout, distribute, track, correct | User or auto |
-| `consensus-loop:implementer` | Headless worker (redirect to `agents/implementer.md`) | Orchestrator only |
 | `consensus-loop:verify` | Done-criteria verification (CQ/T/CC/CL/S/I/FV/CV) | Before evidence |
 | `consensus-loop:merge` | Squash-merge worktree with structured commit | After retro |
 | `consensus-loop:planner` | Track definition + work breakdown design | For planning |

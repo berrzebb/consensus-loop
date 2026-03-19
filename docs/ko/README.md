@@ -32,8 +32,7 @@ consensus-loop/
 │
 ├── skills/                ← 슬래시 명령 스킬 (자동 발견, 접두사: consensus-loop:)
 │   ├── orchestrator/      ← consensus-loop:orchestrator — 멀티트랙 분배 + 에이전트 레지스트리
-│   ├── implementer/       ← consensus-loop:implementer — 헤드리스 워커 (워크트리, SendMessage 보정)
-│   ├── verify-implementation/ ← consensus-loop:verify — done-criteria 검증
+│   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
 │   ├── merge-worktree/    ← consensus-loop:merge — 워크트리 결과 스쿼시 머지
 │   ├── planner/           ← consensus-loop:planner — 플래닝 + 작업 분해
 │   └── consensus-loop/    ← consensus-loop:guide — 증거 패키지 가이드

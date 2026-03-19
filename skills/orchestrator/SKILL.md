@@ -78,7 +78,7 @@ Issue multiple Agent tool calls in a single message:
 // Agent tool call 1
 {
   "prompt": "[task-A context + handoff section + done-criteria]",
-  "subagent_type": "consensus-loop:implementer",
+  "subagent_type": "implementer",
   "isolation": "worktree",
   "run_in_background": true,
   "description": "implement task-A"
@@ -87,7 +87,7 @@ Issue multiple Agent tool calls in a single message:
 // Agent tool call 2 (same message)
 {
   "prompt": "[task-B context + handoff section + done-criteria]",
-  "subagent_type": "consensus-loop:implementer",
+  "subagent_type": "implementer",
   "isolation": "worktree",
   "run_in_background": true,
   "description": "implement task-B"
@@ -162,7 +162,7 @@ After scout phase (or skipping it):
    - Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
    - Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
 3. Compose worker prompt with: task context + **scout blueprint** (if available)
-4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "consensus-loop:implementer"`, `run_in_background: true`
+4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "implementer"`, `run_in_background: true`
 5. **Record agent info**: `agentId`, `worktreePath`, `worktreeBranch` → handoff
 6. Update handoff status: `not-started` → `in-progress`
 7. **Continue working** — do not wait. Use the freed time to: update handoff, prepare next task context, spawn additional workers, or handle other agent completions
@@ -251,7 +251,7 @@ If blocked → skip → select next unblocked task.
 
 ## Anti-Patterns
 
-- Do NOT implement code yourself — spawn a worker via Agent tool (`consensus-loop:implementer`)
+- Do NOT implement code yourself — spawn a worker via Agent tool (`implementer` agent)
 - Do NOT spawn a new agent for corrections — use SendMessage to the existing `agent_id`
 - Do NOT hold worker context in your window — read from files
 - Do NOT skip dependency checks — blocked tasks will fail

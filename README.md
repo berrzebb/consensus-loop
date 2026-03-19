@@ -34,7 +34,8 @@ Drop in one directory, edit one `config.json`, and every file edit is automatica
 | **Session lifecycle** | `SessionStart` / `Stop` hooks manage session ID and cleanup |
 | **Subagent tracking** | `SubagentStop` hook captures implementer agent results |
 | **Handoff sync** | `handoff-writer.mjs` — bidirectional sync between repo handoff doc and Claude memory |
-| **Plugin skills** | 6 slash-command skills: `consensus-loop:orchestrator`, `consensus-loop:implementer`, `consensus-loop:verify`, `consensus-loop:merge`, `consensus-loop:planner`, `consensus-loop:guide` |
+| **Plugin skills** | 5 slash-command skills: `consensus-loop:orchestrator`, `consensus-loop:verify`, `consensus-loop:merge`, `consensus-loop:planner`, `consensus-loop:guide` |
+| **Plugin agents** | 2 agent definitions: `implementer` (worktree worker), `scout` (RTM generator) |
 | **CLI commands** | 2 slash commands: `/consensus-audit` (manual audit), `/consensus-status` (current state) |
 | **Codex session log** | `codex-session.log` / `audit-bg.log` — Codex output recorded for debugging |
 | **Hook toggles** | `plugin.hooks_enabled` — individually disable audit, session_gate, quality_rules, pre_compact |
@@ -63,7 +64,6 @@ consensus-loop/
 │
 ├── skills/                ← Slash-command skills (auto-discovered, prefix: consensus-loop:)
 │   ├── orchestrator/      ← consensus-loop:orchestrator — multi-track distribution + agent registry
-│   ├── implementer/       ← consensus-loop:implementer — headless worker (worktree, SendMessage corrections)
 │   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
 │   ├── merge-worktree/    ← consensus-loop:merge — squash merge worktree results
 │   ├── planner/           ← consensus-loop:planner — planning + work breakdown

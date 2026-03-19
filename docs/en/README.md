@@ -32,7 +32,6 @@ consensus-loop/
 │
 ├── skills/                ← Slash-command skills (auto-discovered, prefix: consensus-loop:)
 │   ├── orchestrator/      ← consensus-loop:orchestrator — multi-track distribution + agent registry
-│   ├── implementer/       ← consensus-loop:implementer — headless worker (worktree, SendMessage corrections)
 │   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
 │   ├── merge-worktree/    ← consensus-loop:merge — squash merge worktree results
 │   ├── planner/           ← consensus-loop:planner — planning + work breakdown
