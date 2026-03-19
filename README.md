@@ -102,7 +102,13 @@ A single scout run on 5 foundation tracks produced 3-way traceability matrices r
 
 The scout eliminated redundant exploration — implementers received pre-verified RTM rows and skipped straight to coding.
 
-**In action — orchestrator distributing RTM-based work to parallel agents:**
+**In action — orchestrator analyzing RTM state and proposing parallel distribution:**
+
+![Orchestrator identifies unblocked tracks from RTM, checks scope overlap between candidates, and proposes 3 parallel agents](assets/orchestrator-rtm-scope-analysis.png)
+
+*The orchestrator reads RTM state across all tracks, identifies 4 unblocked tracks (14, 17, P1, P2), checks file scope overlap between every pair (only P1 vs P2 has a dependency warning), and proposes 3 parallel agents with non-conflicting scopes.*
+
+**Orchestrator distributing RTM-based work to parallel agents:**
 
 ![Orchestrator analyzes scope overlap, splits tasks into non-conflicting agents, and distributes RTM rows](assets/orchestrator-scope-distribution.png)
 
