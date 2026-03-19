@@ -78,7 +78,7 @@ Issue multiple Agent tool calls in a single message:
 // Agent tool call 1
 {
   "prompt": "[task-A context + handoff section + done-criteria]",
-  "subagent_type": "implementer",
+  "subagent_type": "consensus-loop:implementer",
   "isolation": "worktree",
   "run_in_background": true,
   "description": "implement task-A"
@@ -87,7 +87,7 @@ Issue multiple Agent tool calls in a single message:
 // Agent tool call 2 (same message)
 {
   "prompt": "[task-B context + handoff section + done-criteria]",
-  "subagent_type": "implementer",
+  "subagent_type": "consensus-loop:implementer",
   "isolation": "worktree",
   "run_in_background": true,
   "description": "implement task-B"
@@ -147,9 +147,20 @@ Orchestrator distributes Forward RTM rows to implementers
    - Detect orphan tests/code that should be cleaned up
    - Verify connection chains across tracks
 
+### RTM Staleness Check
+
+Before distributing work from an existing RTM, verify it's not stale:
+
+1. Compare `work-breakdown.md` mtime vs `rtm-{domain}.md` mtime
+2. If work-breakdown is newer → **RTM is stale** → re-run scout (incremental)
+3. If execution-order.md is newer → cross-track connections may be invalid → re-run scout
+
+Present staleness warning:
+> "RTM for evaluation-pipeline was generated 2 hours ago, but work-breakdown.md was modified 30 minutes ago. Re-running scout to update RTM."
+
 ### When to Skip Scout
 
-- RTM already exists and track files haven't changed (incremental mode)
+- RTM exists AND work-breakdown.md mtime < RTM mtime (RTM is fresh)
 - Correction round (Forward RTM rows already identified by auditor rejection)
 - Single-file trivial change
 
@@ -162,7 +173,7 @@ After scout phase (or skipping it):
    - Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
    - Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
 3. Compose worker prompt with: task context + **scout blueprint** (if available)
-4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "implementer"`, `run_in_background: true`
+4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "consensus-loop:implementer"`, `run_in_background: true`
 5. **Record agent info**: `agentId`, `worktreePath`, `worktreeBranch` → handoff
 6. Update handoff status: `not-started` → `in-progress`
 7. **Continue working** — do not wait. Use the freed time to: update handoff, prepare next task context, spawn additional workers, or handle other agent completions
@@ -171,10 +182,12 @@ After scout phase (or skipping it):
 
 When worker completes:
 
-1. Read updated handoff
-2. Read verdict file (from respond file path)
+1. Read the worker's **worktree** watch_file (not main repo) — each worker writes evidence to its own worktree copy
+2. Read verdict file from the worker's worktree
 3. If `[agree_tag]` → worker commits WIP → proceed to **Retrospective & Merge**
 4. If `[pending_tag]` → **Correction Cycle**
+
+**Parallel evidence safety**: Each worktree-isolated worker writes to its own copy of the watch_file. Workers never overwrite each other's evidence. The orchestrator reads results from each worktree individually.
 
 ## Correction Cycle (SendMessage)
 
@@ -251,7 +264,7 @@ If blocked → skip → select next unblocked task.
 
 ## Anti-Patterns
 
-- Do NOT implement code yourself — spawn a worker via Agent tool (`implementer` agent)
+- Do NOT implement code yourself — spawn a worker via Agent tool (`consensus-loop:implementer`)
 - Do NOT spawn a new agent for corrections — use SendMessage to the existing `agent_id`
 - Do NOT hold worker context in your window — read from files
 - Do NOT skip dependency checks — blocked tasks will fail

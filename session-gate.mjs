@@ -84,7 +84,10 @@ const tool_name = input.tool_name || "";
 // Completion command → release marker
 if (tool_name === "Bash") {
   const command = input.tool_input?.command || "";
-  if (command.includes(COMPLETION_CMD)) {
+  const cmdTrimmed = command.trim();
+  if (cmdTrimmed === COMPLETION_CMD ||
+      cmdTrimmed === `echo ${COMPLETION_CMD}` ||
+      /^echo\s+["']?session-self-improvement-complete["']?\s*$/.test(cmdTrimmed)) {
     write_marker({
       retro_pending: false,
       completed_at: new Date().toISOString(),

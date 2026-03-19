@@ -84,13 +84,16 @@ The updated RTM rows become the **evidence** — the auditor verifies each row.
 
 ### 5. Submit Evidence
 
-Write to the watch file (from config `consensus.watch_file`). Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
+**Worktree isolation**: Write evidence to the watch file **in your worktree** (not the main repo). The path is the same (`consensus.watch_file` from config), but resolved relative to the worktree root. This prevents parallel workers from overwriting each other's evidence.
+
+Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
 The evidence Claim section references the matrix row numbers that were fixed.
 
 Key rules:
 - Use a single **Write** (not sequential Edits) — atomic Write is preferred
-- Include ALL required sections: Claim, Changed Files, Test Command, Test Result, Residual Risk
+- Include ALL required sections: Forward RTM Rows, Claim, Changed Files, Test Command, Test Result, Residual Risk
 - Tag with `[trigger_tag]` from config
+- **Do NOT write to the main repo's watch_file** — write to your worktree copy only
 
 ### 6. Wait for Audit Result
 
