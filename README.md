@@ -1,5 +1,7 @@
 # consensus-loop
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19108370.svg)](https://doi.org/10.5281/zenodo.19108370)
+
 **AI writes code. A different AI reviews it. Nothing ships without consensus.**
 
 A Claude Code plugin that enforces a cross-model audit gate on every code change. Claude implements, GPT/Codex reviews, and a human-in-the-loop retrospective ensures the team learns from each cycle.
