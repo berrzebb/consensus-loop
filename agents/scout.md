@@ -100,12 +100,61 @@ From `dependency_graph` and execution-order dependencies:
 
 Output: Cross-Track Connection summary table
 
+### Phase 7: Gap Report
+
+Summarize actionable findings from the RTM analysis into a **Gap Report** that the planner can consume for work-breakdown amendments.
+
+Extract from the 3 matrices:
+
+1. **Unimplemented requirements**: Req IDs where Exists = ❌ or Impl = ❌ in Forward RTM → suggest adding to work-breakdown
+2. **Orphan tests**: Tests with no requirement match from Backward RTM → suggest cleanup track or reassignment
+3. **Broken cross-track links**: Import chains with missing files from Phase 6 → suggest prerequisite adjustment in execution-order
+4. **Coverage gaps**: Files below CV thresholds (stmt < 85%, branch < 75%) from coverage data → suggest test additions
+
+Output: `{planning_dir}/gap-report-{domain}.md`
+
+Format:
+
+```markdown
+# Gap Report: {domain}
+
+> Generated: {date} | Source: rtm-{domain}.md
+
+## Unimplemented Requirements
+
+| Req ID | File | Status | Suggestion |
+|--------|------|--------|------------|
+| EV-3 | src/evals/runner.ts | Impl ❌ | Add implementation to WB-3 |
+
+## Orphan Tests
+
+| Test File | Imports | Matched Req | Suggestion |
+|-----------|---------|-------------|------------|
+| tests/legacy.test.ts | src/old/... | None | Cleanup or reassign |
+
+## Broken Cross-Track Links
+
+| Source | Target | Issue | Suggestion |
+|--------|--------|-------|------------|
+| EV-2:runner.ts → EG-5:guardrail.ts | Import missing | Add prerequisite in execution-order |
+
+## Summary
+
+- X unimplemented requirements
+- Y orphan tests
+- Z broken links
+- W coverage gaps
+```
+
+**Skip gap report** if all Forward RTM rows are ✅ and no orphans/broken links exist (nothing to report).
+
 ## Output Location
 
 RTM files are saved at the root of `consensus.planning_dirs` (from config), alongside `execution-order.md`:
 
 ```
 {planning_dir}/rtm-{domain}.md          ← per-track RTM (3 matrices)
+{planning_dir}/gap-report-{domain}.md   ← actionable gap report for planner
 {planning_dir}/cross-track-connections.md ← cross-track import chain audit
 ```
 
