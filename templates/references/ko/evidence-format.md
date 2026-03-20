@@ -9,7 +9,7 @@
 3. **Changed Files** — Full list of modified code/test files (must match RTM rows)
 4. **Test Command** — **Only tests related to changed files** (no globs, must include lint command). Full test suite is CI's responsibility, not evidence scope.
 5. **Test Result** — Terminal output copy-paste (no estimates/rounding, must include lint pass/fail)
-6. **Residual Risk** — Unaddressed RTM rows with reason (e.g., "EV-3: deferred — depends on EV-2")
+6. **Residual Risk** — 이 트랙의 **모든** 미처리 RTM 행과 사유. 현재 제출에 포함되지 않은 행도 반드시 기재. 감사자는 이를 통해 갭이 인지되었는지 확인. 형식: `Req ID: 상태 (partial-impl/partial-wiring/missing) — 사유`
 
 ## Writing Rules
 

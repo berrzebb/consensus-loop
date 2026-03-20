@@ -9,7 +9,7 @@
 3. **Changed Files** — Full list of modified code/test files (must match RTM rows)
 4. **Test Command** — **Only tests related to changed files** (no globs, must include lint command). Full test suite is CI's responsibility, not evidence scope.
 5. **Test Result** — Terminal output copy-paste (no estimates/rounding, must include lint pass/fail)
-6. **Residual Risk** — Unaddressed RTM rows with reason (e.g., "EV-3: deferred — depends on EV-2")
+6. **Residual Risk** — **ALL** unaddressed RTM rows for this track with reason. This includes rows NOT in the current submission. The auditor uses this to verify that gaps are acknowledged, not silently dropped. Format: `Req ID: status (partial-impl/partial-wiring/missing) — reason`
 
 ## Writing Rules
 
@@ -52,5 +52,6 @@ npx tsc --noEmit
 - tsc: passed
 
 ### Residual Risk
-- EV-3: deferred — depends on EV-2 completion
+- EV-3: missing — depends on EV-2 completion (deferred to next batch)
+- EV-4: partial-wiring — code exists but not imported by orchestrator.ts (next track scope)
 ```

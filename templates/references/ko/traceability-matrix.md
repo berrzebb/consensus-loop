@@ -43,7 +43,7 @@
 | **Design Ref** | README.md | 설계 문서 섹션 참조 |
 | **File** | work-breakdown.md | "첫 수정 파일" / "경계" / "프론트엔드"의 대상 파일 |
 | **Exists** | 스카우트 | ✅ / ❌ — 코드베이스 대조 |
-| **Impl** | 스카우트 | ✅ 완료 / ⚠️ 부분 / ❌ 미구현 / — (파일 부재) |
+| **Impl** | 스카우트 | ✅ 완료 / ⚠️ partial-impl / 🔌 partial-wiring / ❌ 미구현 / — (파일 부재) |
 | **Test Case** | 스카우트 → 구현자 | 테스트 파일:라인, `self`=자기 자신이 테스트, — 부재 |
 | **Test Result** | 구현자 | ✓ pass / ✗ fail / — pending |
 | **Connected** | 스카우트 | 하류 소비자 `Req ID:file` (import 추적) |
@@ -152,6 +152,7 @@ execution-order 의존 관계에 따라 import 체인 추적.
 | **구현** | 구현자 | 순방향 RTM 갱신: Exists, Impl, Test Case, Test Result |
 | **검증** | 감사자 | 역방향 RTM으로 각 수정이 요구사항에 추적됨을 확인 |
 | **보정** | 구현자 | ❌ 판정 행만 재진입 |
+| **종결 전 검증** | 스카우트 | **필수 재스캔** — 제출된 행뿐 아니라 모든 행 검증 |
 | **종료** | 오케스트레이터 | 양방향 RTM에 갭 0 → 트랙 완료 |
 
 ## 증분 갱신

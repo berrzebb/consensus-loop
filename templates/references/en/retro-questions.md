@@ -26,6 +26,23 @@
 - AI → User: Honest feedback on collaboration style
 - User → AI: Areas for improvement
 
+## ⑤ Act — Register improvement items (PDCA)
+
+Run `act_analyze` tool (or `node tool-runner.mjs act_analyze`) to produce structured improvement items from audit history + FVM results.
+
+1. Review the metrics and improvement items with the user
+2. User approves, modifies, or rejects each item
+3. Append approved items to `work-catalog.md` under `## Act Improvements`
+4. These items become inputs for the next Plan cycle
+
+Format for work-catalog entry:
+```markdown
+| ID | Work item | Type | Source | Priority |
+|---|---|---|---|---|
+| ACT-A-1 | Review CC-2 rejection policy (40% FP rate) | policy | audit_history | high |
+| ACT-F-1 | Fix FVM page-to-endpoint tier mapping | tooling | fvm_validate | medium |
+```
+
 ## Caution
 
 - **Do not modify code directly** — suggest improvements only

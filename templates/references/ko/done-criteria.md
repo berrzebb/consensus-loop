@@ -33,12 +33,20 @@ Submit evidence only when ALL items pass.
 | T-3 | No existing test regressions in related scope | `npx vitest run <related>` output |
 | T-4 | Test commands are re-runnable as-is (no glob patterns, no environment assumptions) | Command is copy-pasteable |
 
+### Functional Verification
+
+| # | Criterion | Proof |
+|---|-----------|-------|
+| FV-1 | `fvm_generate` 실행 결과에서 AUTH_LEAK(🔴) 0건 | `fvm_generate` 출력 또는 `fvm_validate` 결과 |
+| FV-2 | 변경된 route/endpoint가 FVM 행에 포함되어 있음 | FVM 테이블에서 해당 경로 확인 |
+| FV-3 | 새 역할/권한 추가 시 FVM roles 파일(`fvm-roles.md`) 업데이트 | roles 파일 diff |
+
 ### Claim-Code Consistency
 
 | # | Criterion | Proof |
 |---|-----------|-------|
 | CC-1 | Claim text matches actual code behavior | Changed file:line references |
-| CC-2 | Changed Files list matches `git diff --name-only` | Diff output |
+| CC-2 | Changed Files 목록이 diff 범위와 일치 — 증거의 diff basis 커밋 범위(예: `git diff --name-only <base>..<head>`) 사용, 없으면 `git diff --name-only`로 미커밋 변경 확인 | Diff output |
 | CC-3 | Residual Risk reflects actual unresolved items (no over/under-stating) | Code state |
 
 ### Cross-Layer Contract

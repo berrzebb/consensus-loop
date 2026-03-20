@@ -139,7 +139,7 @@ function run_script(absPath, args = []) {
 }
 
 /** (A) Detected trigger_tag → spawn audit_script in background, return immediately. */
-function run_audit() {
+function run_audit(watchFilePath) {
   if (process.env.FEEDBACK_HOOK_DRY_RUN === "1") {
     process.stdout.write(t("index.dry_run.audit", { script: plugin.audit_script }));
     return;
@@ -181,7 +181,9 @@ function run_audit() {
 
   let child;
   try {
-    child = spawn(process.execPath, [auditScript], {
+    const auditArgs = [auditScript];
+    if (watchFilePath) auditArgs.push("--watch-file", watchFilePath);
+    child = spawn(process.execPath, auditArgs, {
       cwd: REPO_ROOT,
       detached: true,
       stdio: ["ignore", logFd, logFd],
@@ -310,7 +312,9 @@ async function main() {
 
   // (A) Detect watch_file edit — with debounce for sequential edits
   if (isHookEnabled("audit") && normalized.endsWith(c.watch_file.toLowerCase())) {
-    const watchPath = find_watch_file();
+    // Use the actual file_path from tool input — not findWatchFile() which only checks main repo.
+    // This ensures worktree watch_file edits are detected correctly.
+    const watchPath = existsSync(filePath) ? filePath : find_watch_file();
     if (!watchPath) { log("EXIT: watch_file not found"); return; }
 
     const content = readFileSync(watchPath, "utf8");
@@ -357,7 +361,7 @@ async function main() {
       log(`QUICK_AUDIT: ${quickAuditWarnings.length} warnings`);
     }
 
-    run_audit();
+    run_audit(watchPath);
     return;
   }
 

@@ -33,12 +33,20 @@ Submit evidence only when ALL items pass.
 | T-3 | No existing test regressions in related scope | `npx vitest run <related>` output |
 | T-4 | Test commands are re-runnable as-is (no glob patterns, no environment assumptions) | Command is copy-pasteable |
 
+### Functional Verification
+
+| # | Criterion | Proof |
+|---|-----------|-------|
+| FV-1 | `fvm_generate` output has 0 AUTH_LEAK (🔴) findings | `fvm_generate` output or `fvm_validate` result |
+| FV-2 | Changed routes/endpoints are covered by FVM rows | FVM table lookup for affected paths |
+| FV-3 | New roles/permissions added → FVM roles file (`fvm-roles.md`) updated | Roles file diff |
+
 ### Claim-Code Consistency
 
 | # | Criterion | Proof |
 |---|-----------|-------|
 | CC-1 | Claim text matches actual code behavior | Changed file:line references |
-| CC-2 | Changed Files list matches `git diff --name-only` | Diff output |
+| CC-2 | Changed Files list matches the diff scope — use evidence's diff basis commit range (e.g. `git diff --name-only <base>..<head>`) when available, otherwise `git diff --name-only` for uncommitted changes | Diff output |
 | CC-3 | Residual Risk reflects actual unresolved items (no over/under-stating) | Code state |
 
 ### Cross-Layer Contract

@@ -33,8 +33,8 @@ const promptTemplatePath = resolvePluginPath(plugin.audit_prompt);
 let claudePath = null;
 let gptPath    = null;
 
-function initPaths() {
-  claudePath = findWatchFile();
+function initPaths(overrideWatchFile) {
+  claudePath = overrideWatchFile && existsSync(overrideWatchFile) ? overrideWatchFile : findWatchFile();
   gptPath = claudePath ? resolve(dirname(claudePath), plugin.respond_file ?? "gpt.md") : null;
 }
 const sessionPath = resolve(HOOKS_DIR, plugin.session_file);
@@ -77,6 +77,7 @@ Examples:
 function parseArgs(argv) {
   const args = {
     scope: null,
+    watchFile: null,
     model: "gpt-5.4",
     sandbox: "danger-full-access",
     sessionId: null,
@@ -95,6 +96,10 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--scope") {
       args.scope = argv[++i] ?? null;
+      continue;
+    }
+    if (arg === "--watch-file") {
+      args.watchFile = argv[++i] ?? null;
       continue;
     }
     if (arg === "--model") {
@@ -291,11 +296,228 @@ function checkEslintCoverage(markdown) {
   return warnings;
 }
 
-function buildPrompt(scopeText, promotionHint) {
+/**
+ * Run all deterministic verifications LOCALLY before invoking the auditor.
+ *
+ * The auditor receives pre-computed results instead of running commands
+ * in its own sandbox (which may have stale state).
+ *
+ * Returns a markdown section with:
+ *   - Changed files (from git)
+ *   - CQ-1: eslint results per changed file
+ *   - CQ-2: tsc --noEmit results
+ *   - T: test command results (from evidence)
+ */
+function runPreVerification(markdown) {
+  const sections = [];
+
+  // 1. Changed files (CC-2)
+  sections.push(computeChangedFiles(markdown));
+
+  // 2. CQ-2: tsc --noEmit (root + web if exists)
+  sections.push(runTscLocally());
+
+  // 3. CQ-1: eslint on changed source files
+  const changedFiles = extractChangedFilesFromEvidence(markdown);
+  sections.push(runEslintLocally(changedFiles));
+
+  // 4. T: re-run test commands from evidence
+  const testCmds = extractTestCommands(markdown);
+  sections.push(runTestsLocally(testCmds));
+
+  return sections.join("\n\n");
+}
+
+/** Extract file paths from ### Changed Files section in evidence. */
+function extractChangedFilesFromEvidence(markdown) {
+  const section = readSection(markdown, "Changed Files");
+  if (!section) return [];
+  return section
+    .split("\n")
+    .map(line => line.match(/`([^`]+\.[a-zA-Z]+)`/))
+    .filter(Boolean)
+    .map(m => m[1]);
+}
+
+/** Extract test commands from ### Test Command section in evidence. */
+function extractTestCommands(markdown) {
+  const section = readSection(markdown, "Test Command");
+  if (!section) return [];
+  // Extract lines inside code blocks or plain command lines
+  return section
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith("```") && !l.startsWith("#") && !l.startsWith("//"))
+    .filter(l => l.match(/^(npx|npm|node|vitest|jest|cargo)/));
+}
+
+/** Run tsc --noEmit locally and return results. */
+function runTscLocally() {
+  const results = ["### CQ-2: TypeScript Check (pre-verified locally)"];
+
+  // Root tsc
+  const rootTsc = spawnSync("npx", ["tsc", "--noEmit"], {
+    cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 60000, shell: true,
+  });
+  results.push(`**Root \`npx tsc --noEmit\`**: ${rootTsc.status === 0 ? "✅ 0 errors" : "❌ FAILED"}`);
+  if (rootTsc.status !== 0) {
+    const output = (rootTsc.stdout || rootTsc.stderr || "").trim();
+    if (output) results.push("```\n" + output.slice(0, 1000) + "\n```");
+  }
+
+  // Web tsc (if web/tsconfig.json exists)
+  const webTsconfig = resolve(REPO_ROOT, "web", "tsconfig.json");
+  if (existsSync(webTsconfig)) {
+    const webTsc = spawnSync("npx", ["tsc", "--noEmit", "-p", "web/tsconfig.json"], {
+      cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 60000, shell: true,
+    });
+    results.push(`**Web \`npx tsc --noEmit -p web/tsconfig.json\`**: ${webTsc.status === 0 ? "✅ 0 errors" : "❌ FAILED"}`);
+    if (webTsc.status !== 0) {
+      const output = (webTsc.stdout || webTsc.stderr || "").trim();
+      if (output) results.push("```\n" + output.slice(0, 1000) + "\n```");
+    }
+  }
+
+  return results.join("\n");
+}
+
+/** Run eslint on changed source files locally. */
+function runEslintLocally(files) {
+  const sourceFiles = files.filter(f => f.match(/\.(ts|tsx|js|jsx|mjs)$/));
+  if (sourceFiles.length === 0) {
+    return "### CQ-1: ESLint (pre-verified locally)\nNo source files to lint.";
+  }
+
+  const results = ["### CQ-1: ESLint (pre-verified locally)"];
+  let allPassed = true;
+
+  for (const file of sourceFiles) {
+    const fullPath = resolve(REPO_ROOT, file);
+    if (!existsSync(fullPath)) continue;
+
+    const lint = spawnSync("npx", ["eslint", file, "--no-warn-ignored"], {
+      cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000, shell: true,
+    });
+    if (lint.status !== 0) {
+      allPassed = false;
+      const output = (lint.stdout || lint.stderr || "").trim();
+      results.push(`- ❌ \`${file}\`: ${output.split("\n")[0]}`);
+    }
+  }
+
+  if (allPassed) {
+    results.push(`✅ All ${sourceFiles.length} files pass eslint.`);
+  }
+
+  return results.join("\n");
+}
+
+/** Run test commands from evidence locally. */
+function runTestsLocally(cmds) {
+  if (cmds.length === 0) {
+    return "### T-1: Tests (pre-verified locally)\nNo test commands found in evidence.";
+  }
+
+  const results = ["### T-1: Tests (pre-verified locally)"];
+
+  for (const cmd of cmds) {
+    // Skip lint/tsc commands (already covered by CQ)
+    if (cmd.includes("eslint") || cmd.includes("tsc")) continue;
+
+    const parts = cmd.split(/\s+/);
+    const child = spawnSync(parts[0], parts.slice(1), {
+      cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      timeout: 120000, shell: true,
+    });
+
+    const passed = child.status === 0;
+    const output = (child.stdout || child.stderr || "").trim();
+    results.push(`**\`${cmd}\`**: ${passed ? "✅ PASS" : "❌ FAIL"}`);
+    if (!passed) {
+      results.push("```\n" + output.slice(-500) + "\n```");
+    } else {
+      // Extract summary line (last few lines usually have counts)
+      const lines = output.split("\n");
+      const summary = lines.slice(-3).join("\n");
+      results.push("```\n" + summary + "\n```");
+    }
+  }
+
+  return results.join("\n");
+}
+
+/** Compute changed file list for CC-2. */
+function computeChangedFiles(markdown) {
+  let diffCmd = "git diff --name-only";
+
+  // 1. Extract from evidence — look for explicit diff basis
+  const diffBasisRe = /git\s+diff\s+(?:--name-only\s+)?([0-9a-f]{7,40}\.{2,3}[0-9a-f]{7,40})/;
+  const match = markdown.match(diffBasisRe);
+  if (match) {
+    diffCmd = `git diff --name-only ${match[1]}`;
+  } else {
+    // 2. Compute from git history
+    // Try merge-base first (works on feature branches), fall back to log-based (works on main)
+    let useMergeBase = false;
+    try {
+      const mainBranch = (() => {
+        const r = spawnSync("git", ["rev-parse", "--verify", "main"], { cwd: REPO_ROOT, stdio: "pipe" });
+        return r.status === 0 ? "main" : "master";
+      })();
+      const mergeBase = spawnSync("git", ["merge-base", "HEAD", mainBranch], {
+        cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      });
+      if (mergeBase.status === 0 && mergeBase.stdout.trim()) {
+        const base = mergeBase.stdout.trim().slice(0, 10);
+        const testCmd = `git diff --name-only ${base}..HEAD`;
+        // Verify merge-base actually produces files (on main branch, merge-base = HEAD → 0 files)
+        const testResult = spawnSync("git", ["diff", "--name-only", `${base}..HEAD`], {
+          cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+        });
+        const testFiles = (testResult.stdout || "").trim().split("\n").filter(Boolean);
+        if (testFiles.length > 0) {
+          diffCmd = testCmd;
+          useMergeBase = true;
+        }
+      }
+    } catch { /* merge-base failed */ }
+
+    // Log-based fallback — always works (main or feature branch)
+    if (!useMergeBase) {
+      try {
+        const log = spawnSync("git", ["log", "--oneline", "-10", "--format=%H"], {
+          cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+        });
+        if (log.status === 0) {
+          const hashes = log.stdout.trim().split("\n").filter(Boolean);
+          if (hashes.length > 1) {
+            const oldest = hashes[hashes.length - 1].slice(0, 10);
+            diffCmd = `git diff --name-only ${oldest}..HEAD`;
+          }
+        }
+      } catch { /* fallback failed */ }
+    }
+  }
+
+  // Execute the diff command and return the file list
+  const result = spawnSync("git", diffCmd.replace("git ", "").split(" "), {
+    cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  const files = (result.status === 0 ? result.stdout : "").trim().split("\n").filter(Boolean);
+  const fileList = files.length > 0
+    ? files.map(f => `- \`${f}\``).join("\n")
+    : "(no changed files detected)";
+
+  return `**Diff scope** (\`${diffCmd}\`, ${files.length} files):\n${fileList}`;
+}
+
+function buildPrompt(scopeText, promotionHint, preVerified) {
   const template = readFileSync(promptTemplatePath, "utf8");
   const promotionSection = buildPromotionSection(promotionHint);
   return template
     .split("{{SCOPE}}").join(scopeText)
+    .split("{{PRE_VERIFIED}}").join(preVerified)
     .split("{{PROMOTION_SECTION}}").join(promotionSection)
     .split("{{CLAUDE_MD_PATH}}").join(claudePath)
     .split("{{GPT_MD_PATH}}").join(gptPath)
@@ -482,7 +704,7 @@ function runRespond(args) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  initPaths();
+  initPaths(args.watchFile);
 
   if (args.resetSession) {
     deleteSavedSessionId();
@@ -514,8 +736,9 @@ async function main() {
   }
 
   const scopeText = args.scope ?? detectScope(claudeMd);
+  const preVerified = runPreVerification(claudeMd);
   const promotionHint = loadPromotionHint();
-  const prompt = buildPrompt(scopeText, promotionHint);
+  const prompt = buildPrompt(scopeText, promotionHint, preVerified);
   const codexBin = resolveCodexBin();
 
   if (args.dryRun) {

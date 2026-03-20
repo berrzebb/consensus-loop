@@ -43,12 +43,33 @@ Detects: **implementation gaps, missing tests, unconnected outputs**
 | **Design Ref** | README.md | Design document section reference |
 | **File** | work-breakdown.md | Target file from "첫 수정 파일" / "경계" / "프론트엔드" |
 | **Exists** | scout | ✅ / ❌ — checked against actual codebase |
-| **Impl** | scout | ✅ complete / ⚠️ partial / ❌ missing / — (file absent) |
+| **Impl** | scout | ✅ complete / ⚠️ partial-impl / 🔌 partial-wiring / ❌ missing / — (file absent) |
 | **Test Case** | scout → implementer | Test file:line, `self` if row IS a test, — if absent |
 | **Test Result** | implementer | ✓ pass / ✗ fail / — pending |
 | **Connected** | scout | Downstream consumer `Req ID:file` via import tracing |
 | **Coverage** | coverage_map tool | stmt% / br% / fn% from vitest coverage JSON |
 | **Status** | all | open → wip → fixed → verified |
+
+### Impl Status Definitions
+
+| Status | Meaning | Scout Detection | Implementer Action |
+|--------|---------|-----------------|-------------------|
+| ✅ complete | All work-breakdown items for this Req ID × File are implemented and connected | All functions exist + all imports resolved + consumers trace back | Verify only |
+| ⚠️ partial-impl | Core logic exists but some branches/cases/error paths missing | Function exists but body has TODO, empty catch, missing branches vs work-breakdown | Fill gaps — do NOT rewrite existing code |
+| 🔌 partial-wiring | Code exists but import chain is broken — not consumed by downstream | File/function exists but `dependency_graph` shows no inbound edges from expected consumers | Add missing imports + wire to consumers |
+| ❌ missing | File or function does not exist | `code_map` finds no match for the target | Full implementation needed |
+| — | File absent from codebase (expected for new requirements) | `existsSync()` returns false | Create file + implement |
+
+**Critical distinction**: `partial-impl` means the code does something but incompletely. `partial-wiring` means the code is complete but disconnected — no one calls it. The second type was historically mislabeled as `partial-impl`, causing "done" declarations on unconnected code.
+
+### Gap Detail Column
+
+When Impl is `⚠️ partial-impl` or `🔌 partial-wiring`, the scout MUST add a **Gap Detail** annotation in the Description column:
+
+```
+| EV-1 | EvalCase contract [GAP: missing timeout handling, retry for 429] | ... | ⚠️ partial-impl | ...
+| OR-2 | tool-loop-helpers wiring [GAP: no import from reducer.ts] | ... | 🔌 partial-wiring | ...
+```
 
 ---
 
@@ -153,7 +174,29 @@ From execution-order dependencies, trace import chains across tracks.
 | **Implement** | implementer | Updates Forward RTM: Exists, Impl, Test Case, Test Result |
 | **Verify** | auditor | Uses Backward RTM to verify each fix traces to a requirement |
 | **Correct** | implementer | Only ❌ verdict rows re-enter cycle |
+| **Pre-Close** | scout | **Mandatory re-scan** before "done" — verifies ALL rows, not just submitted ones |
 | **Close** | orchestrator | Bidirectional RTM shows zero gaps → track complete |
+
+### Pre-Close Scout (mandatory)
+
+Before declaring a track "done", the orchestrator MUST re-run the scout to verify:
+
+1. **No ⚠️ partial-impl rows remain** — all partial implementations are either completed or explicitly deferred with rationale
+2. **No 🔌 partial-wiring rows remain** — all code is connected to downstream consumers via actual imports
+3. **Gap Summary is empty or all items are in Residual Risk** — nothing silently dropped
+
+The pre-close scout uses `dependency_graph` to verify import chains and `code_map` to verify function completeness. This catches the case where audit approved submitted evidence but other RTM rows were never submitted.
+
+### Handoff Declaration Format
+
+After pre-close scout, the handoff MUST use:
+```
+Track N: primary requirements done, M gap(s) remaining [deferred: reason]
+```
+NOT:
+```
+Track N: done
+```
 
 ## Incremental Update
 

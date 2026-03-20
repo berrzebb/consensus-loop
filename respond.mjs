@@ -34,8 +34,8 @@ const respondFile      = plugin.respond_file ?? "gpt.md";
 const watchFileDisplay = consensus.watch_file;
 const gptFileDisplay   = `${dirname(consensus.watch_file)}/${respondFile}`;
 
-function initPaths() {
-  claudePath = findWatchFile();
+function initPaths(overrideWatchFile) {
+  claudePath = overrideWatchFile && existsSync(overrideWatchFile) ? overrideWatchFile : findWatchFile();
   gptPath = claudePath ? resolve(dirname(claudePath), respondFile) : null;
   planningDirs = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d.replace(/^\/+/, "")));
 }
@@ -53,12 +53,14 @@ Options:
 }
 
 function parseArgs(argv) {
-  const args = { autoFix: false, dryRun: false, syncNext: true, gptOnly: false };
-  for (const arg of argv) {
+  const args = { autoFix: false, dryRun: false, syncNext: true, gptOnly: false, watchFile: null };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === "--auto-fix") args.autoFix = true;
     else if (arg === "--gpt-only") args.gptOnly = true;
     else if (arg === "--no-sync-next") args.syncNext = false;
     else if (arg === "--dry-run") args.dryRun = true;
+    else if (arg === "--watch-file") args.watchFile = argv[++i] ?? null;
     else if (arg === "-h" || arg === "--help") { usage(); process.exit(0); }
     else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -693,8 +695,8 @@ function buildFixPrompt(corrections, gptMd) {
 }
 
 function main() {
-  initPaths();
   const args = parseArgs(process.argv.slice(2));
+  initPaths(args.watchFile);
 
   if (!existsSync(gptPath)) {
     console.log(t("respond.gpt_not_found"));
@@ -941,6 +943,45 @@ function main() {
         duration_ms: durationMs,
       };
       appendFileSync(historyPath, JSON.stringify(entry) + "\n", "utf8");
+
+      // ── Upstream Delay Auto-Block ──────────────────────────
+      // If this track has 3+ pending verdicts, auto-block downstream tasks in handoff.
+      if (verdict === "pending") {
+        try {
+          const { countTrackPendings, blockDownstreamTasks } = await import("./scripts/enforcement.mjs");
+          const pendings = countTrackPendings(historyPath, track);
+          if (pendings >= 3) {
+            const handoffPath = resolve(REPO_ROOT, plugin.handoff_file ?? ".claude/session-handoff.md");
+            const blocked = blockDownstreamTasks(handoffPath, track, `upstream ${track} rejected ${pendings}x`);
+            if (blocked > 0) {
+              console.log(`[enforcement] Auto-blocked ${blocked} downstream task(s) — ${track} has ${pendings} pending verdicts`);
+            }
+          }
+        } catch { /* enforcement is non-critical */ }
+      }
+
+      // ── Technical Debt Auto-Capture ────────────────────────
+      // Parse Residual Risk from evidence and append to work-catalog.
+      if (verdict === "agree") {
+        try {
+          const { parseResidualRisk, appendTechDebt } = await import("./scripts/enforcement.mjs");
+          const evidenceContent = existsSync(claudePath) ? readFileSync(claudePath, "utf8") : "";
+          const risks = parseResidualRisk(evidenceContent);
+          if (risks.length > 0) {
+            const planDirs = consensus.planning_dirs ?? [];
+            for (const dir of planDirs) {
+              const catalogPath = resolve(REPO_ROOT, dir.replace(/^\/+/, ""), "work-catalog.md");
+              if (existsSync(catalogPath)) {
+                const appended = appendTechDebt(catalogPath, risks, track);
+                if (appended > 0) {
+                  console.log(`[enforcement] Auto-registered ${appended} tech debt item(s) from Residual Risk → ${catalogPath}`);
+                }
+                break; // only append to first found catalog
+              }
+            }
+          }
+        } catch { /* enforcement is non-critical */ }
+      }
     }
   } catch { /* audit history is non-critical — fail silently */ }
 }
