@@ -1,0 +1,9 @@
+{"timestamp":"2026-03-19T19:40:00Z","track":"data-layer","req_ids":["DL-1","DL-2","DL-3"],"verdict":"agree","rejection_codes":[],"round":1}
+{"timestamp":"2026-03-19T19:46:00Z","track":"service-layer","req_ids":["SL-1"],"verdict":"agree","rejection_codes":[],"round":1}
+{"timestamp":"2026-03-19T19:46:00Z","track":"service-layer","req_ids":["SL-2"],"verdict":"pending","rejection_codes":[{"code":"test-gap","severity":"major"}],"round":1,"detail":"No direct test file tests/service/validator.test.ts"}
+{"timestamp":"2026-03-19T19:46:00Z","track":"service-layer","req_ids":["SL-3"],"verdict":"agree","rejection_codes":[],"round":1}
+{"timestamp":"2026-03-19T19:57:00Z","track":"service-layer","req_ids":["SL-2"],"verdict":"agree","rejection_codes":[],"round":2,"detail":"Correction: tests/service/validator.test.ts created, 10/10 pass"}
+{"timestamp":"2026-03-19T20:00:00Z","track":"api-layer","req_ids":["AL-1"],"verdict":"pending","rejection_codes":[{"code":"security","severity":"critical"}],"round":1,"detail":"S-1: routes.ts does not call validateCreateInput()"}
+{"timestamp":"2026-03-19T20:05:00Z","track":"api-layer","req_ids":["AL-1"],"verdict":"pending","rejection_codes":[{"code":"security","severity":"critical"}],"round":2,"detail":"S-1: correction attempt missed PUT handler"}
+{"timestamp":"2026-03-19T20:10:00Z","track":"api-layer","req_ids":["AL-1"],"verdict":"pending","rejection_codes":[{"code":"security","severity":"critical"}],"round":3,"detail":"S-1: still missing validation on PUT handler"}
+{"timestamp":"2026-03-19T20:15:00Z","track":"api-layer","req_ids":["AL-2"],"verdict":"pending","rejection_codes":[{"code":"scope-mismatch","severity":"major"}],"round":1,"detail":"CC-2: evidence lists src/api/middleware.ts not in git diff"}

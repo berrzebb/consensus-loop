@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * MCP Tools Tests — all 6 tools in mcp-server.mjs
+ * MCP Tools Tests — core 6 tools in mcp-server.mjs
  *
  * Tests:
  *   1. rtm_parse  — parse Forward/Backward/Bidirectional, filter by req_id/status
@@ -9,6 +9,11 @@
  *   4. code_map   — symbol extraction, filter, cache
  *   5. audit_scan — pattern detection
  *   6. coverage_map — coverage JSON parsing
+ *
+ * Additional tools tested in separate files:
+ *   - audit_history → tests/audit-history.test.mjs
+ *   - fvm_generate  → tests/fvm-generator.test.mjs
+ *   - fvm_validate  → tests/fvm-validator.test.mjs + tests/fvm-integration.test.mjs
  *
  * Run: node --test tests/mcp-tools.test.mjs
  */

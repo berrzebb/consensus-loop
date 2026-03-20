@@ -15,7 +15,6 @@
   "index.planning.sync": "\n[consensus-loop] Planning sync:\n{out}\n",
   "index.dry_run.audit": "would-run: node {script}\n",
   "index.dry_run.planning": "would-run: node {script} --gpt-only\n",
-
   "audit.scope.fallback": "Unresolved items in {file}",
   "audit.promotion.agree_label": "\nPromotion rule:\n- If all items in the current audit scope are verified as `{agree_tag}`, use the following promotion candidate for `## {next_task_section}` instead of generating one ad hoc.\n- Promotion candidate source: `{source}`\n- Current promotion candidate:\n  - {next_task}\n",
   "audit.eslint.mismatch_header": "⚠ eslint scope mismatch — check before audit:",
@@ -30,7 +29,6 @@
   "audit.session.reset": "No remaining {tag} items — session reset for next audit.",
   "audit.session.reset_pending": "Pending items detected — resetting session to prevent orphan call accumulation.",
   "audit.session.saved": "Saved audit session: {id}",
-
   "respond.gpt_not_found": "gpt.md not found — nothing to respond to.",
   "respond.removed_deprecated": "Removed deprecated '## {section}' section from gpt.md.",
   "respond.removed_deprecated.dryrun": "(dry-run) would remove deprecated '## {section}' section from gpt.md.",
@@ -59,20 +57,17 @@
   "respond.invoking_claude": "\nInvoking claude -p for corrections...",
   "respond.run_with_auto_fix": "\nRun with --auto-fix to invoke claude -p for corrections.",
   "respond.no_gpt_response": "GPT has not yet responded to pending items.",
-
   "respond.retro.all_clear": "\n[ACTION REQUIRED — CYCLE COMPLETION] All audit items resolved ({rx_id}).\nDo not wait for user instruction — complete the full cycle immediately:\n\n== Phase 1: Retrospective ==\n1. Present what went well / what went wrong this cycle\n2. Exchange feedback with the user (honest improvements, not praise)\n3. Extract repeatable principles from feedback → save to memory\n4. Clean up memory — remove duplicate/stale entries\n\n== Phase 2: Commit + Handoff ==\n5. echo session-self-improvement-complete (gate clears)\n6. Commit changes (git add → commit)\n7. Update handoff — memory/session_handoff.md\n\n== Phase 3: Next Task ==\n8. Read gpt.md '## Next Task' section and start the next task immediately\n9. Implement → submit evidence → audit → loop continues\n",
   "respond.retro.skipped_is_retro": "Last synced item was a retrospective ({rx_id}) — skipping auto retrospective.",
   "respond.retro.skipped_no_script": "retro_script not configured — skipping auto retrospective.",
   "retro.no_agreed_items": "(no agreed items)",
   "retro.marker_set": "[retro] Retrospective marker set ({rx_id}) — retrospective will start automatically on next tool use.",
   "retro.no_claude_md": "[retro] claude.md not found. Skipping retrospective.",
-
   "pdoc.none_item": "- none",
   "pdoc.no_promotion_target": "- no remaining promotion target",
   "pdoc.no_next_task": "no next task registered",
   "pdoc.close_task": "close {label}",
   "pdoc.close_tasks": "close {head} and {last}",
-
   "index.format.missing_section": "[FORMAT_MISSING_SECTION] '### {label}' section is missing.",
   "index.format.glob_in_test": "[FORMAT_GLOB_IN_TEST] Test Command contains glob patterns. Use an explicit file list.",
   "index.format.empty_result": "[FORMAT_EMPTY_RESULT] Test Result is empty or too short. Copy-paste the terminal output.",
@@ -85,15 +80,12 @@
   "index.audit.started_async": "\n[consensus-loop] {tag} detected → background audit started (PID {pid}).\nLog: {log}\n\n[ACTION REQUIRED] The audit is running in the background.\n1. Continue processing user requests.\n2. Register a 3-minute Cron watcher via CronCreate — check audit.lock existence and gpt.md changes, run respond.mjs when ready.\n3. Results will auto-sync on next tool use after audit completes.\n",
   "index.audit.already_running": "\n[consensus-loop] Audit already running (PID {pid}). Skipping duplicate execution.\n",
   "index.timestamp.label": "Audit completed",
-
   "gate.protocol": "\n[ACTION REQUIRED — CYCLE COMPLETION]\nAudit cycle completed. Do not wait for user instruction — complete the full cycle immediately.\n\n## Agreed Items\n{context}\n\n## Phase 1: Retrospective (Bash blocked — Read/Write/Edit only)\n1. Present what went well / what went wrong this cycle\n2. Exchange feedback with the user (honest improvements, not praise)\n3. Extract repeatable principles from feedback → save to memory\n4. Clean up memory — remove duplicate/stale entries\n\n## Phase 2: Commit + Handoff (echo clears Bash)\n5. echo session-self-improvement-complete\n6. Commit changes (git add → commit)\n7. Update handoff — memory/session_handoff.md\n\n## Phase 3: Next Task\n8. Read gpt.md 'Next Task' section and start the next task immediately\n9. Implement → submit evidence → audit → loop continues\n",
   "gate.blocked": "[SESSION GATE] Retrospective protocol incomplete — {tool} blocked.\nUse Read/Write/Edit for memory cleanup, then run 'echo session-self-improvement-complete'.\n",
-
   "subagent.stop.completed": "[consensus-loop] Subagent '{agent}' completed.",
   "subagent.stop.deferred_retro": "[ACTION REQUIRED — DEFERRED RETROSPECTIVE]\nThe implementer session triggered retrospective ({rx_id}) but deferred it to this session.\nAgreed items:\n{items}\n\nComplete the retrospective protocol in this session:\n1. Review what went well / what went wrong\n2. Exchange feedback with user\n3. Save repeatable principles to memory\n4. echo session-self-improvement-complete",
   "handoff.sync.success": "[handoff] Synced to memory: {dir}",
   "handoff.sync.skip": "[handoff] Skip: {reason}",
-
   "pdoc.title": "# Feedback Promotion Index",
   "pdoc.meta": "> Status: `active` | Type: feedback-loop promotion rule | Generated by: `.claude/hooks/consensus-loop/respond.mjs`",
   "pdoc.purpose_heading": "## Purpose",
@@ -102,5 +94,18 @@
   "pdoc.rule_body": "- If the current audited scope is fully closed as `{agree_tag}`, `{gpt_file}` should use the first item under `## {promotion_target}` as `## {next_task}`.\n- Residual `{pending_tag}` audit items in `{feedback_glob}` do not automatically block promotion of the next improved work item for an already agreed track.",
   "pdoc.agreed_heading": "## Currently Agreed Tracks",
   "pdoc.target_heading": "## Current Promotion Target",
-  "pdoc.source_heading": "## Source Documents"
+  "pdoc.source_heading": "## Source Documents",
+  "repo.validator_pass": "Validator Pass",
+  "repo.validator_fail": "Validator Fail",
+  "repo.artifact_replay": "Artifact Replay",
+  "repo.lexical_profile": "Lexical Profile",
+  "repo.retrieval_feedback": "Retrieval Feedback",
+  "repo.hidden_reason": "Hidden Reason",
+  "workflows.retrieval_mode": "Retrieval Mode",
+  "workflows.retrieval_mode_lexical": "Lexical",
+  "workflows.retrieval_mode_semantic": "Semantic",
+  "workflows.retrieval_mode_hybrid": "Hybrid",
+  "tool_call.running": "running",
+  "tool_call.success": "done",
+  "tool_call.error": "error"
 }

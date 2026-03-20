@@ -15,7 +15,6 @@
   "index.planning.sync": "\n[consensus-loop] planning 동기화:\n{out}\n",
   "index.dry_run.audit": "would-run: node {script}\n",
   "index.dry_run.planning": "would-run: node {script} --gpt-only\n",
-
   "audit.scope.fallback": "현재 {file}의 미합의 항목",
   "audit.promotion.agree_label": "\n합의 승격 규칙:\n- 현재 감사 범위가 검증 후 모두 `{agree_tag}`이면 `## {next_task_section}`은 임의 생성하지 말고 아래 승격 후보를 그대로 사용하세요.\n- 승격 후보 출처: `{source}`\n- 현재 승격 후보:\n  - {next_task}\n",
   "audit.eslint.mismatch_header": "⚠ eslint 범위 불일치 — 감사 전 확인 권장:",
@@ -30,7 +29,6 @@
   "audit.session.reset": "{tag} 항목이 없습니다 — 다음 감사를 위해 세션을 초기화했습니다.",
   "audit.session.reset_pending": "[계류] 항목 감지 — orphan call 방지를 위해 세션을 새로 시작합니다.",
   "audit.session.saved": "감사 세션 저장: {id}",
-
   "respond.gpt_not_found": "gpt.md를 찾을 수 없음 — 응답할 내용이 없습니다.",
   "respond.removed_deprecated": "gpt.md에서 더 이상 사용하지 않는 '## {section}' 섹션을 제거했습니다.",
   "respond.removed_deprecated.dryrun": "(dry-run) gpt.md에서 더 이상 사용하지 않는 '## {section}' 섹션을 제거할 예정입니다.",
@@ -59,20 +57,17 @@
   "respond.invoking_claude": "\nclaude -p로 보정을 실행합니다...",
   "respond.run_with_auto_fix": "\n--auto-fix 옵션으로 실행하면 claude -p로 보정이 자동 실행됩니다.",
   "respond.no_gpt_response": "GPT가 아직 계류 항목에 응답하지 않았습니다.",
-
   "respond.retro.all_clear": "\n[ACTION REQUIRED — CYCLE COMPLETION] 모든 감사 항목이 합의완료되었습니다 ({rx_id}).\n사용자의 지시를 기다리지 말고 즉시 사이클을 완료하세요:\n\n== 1단계: 회고 ==\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n\n== 2단계: 커밋 + 핸드오프 ==\n5. echo session-self-improvement-complete (게이트 해제)\n6. 변경 사항 커밋 (git add → commit)\n7. 핸드오프 갱신 — memory/session_handoff.md\n\n== 3단계: 다음 작업 착수 ==\n8. gpt.md의 '## 다음 작업' 섹션을 읽고 다음 작업을 즉시 시작\n9. 다음 작업의 구현 → 증거 제출 → 루프 순환\n",
   "respond.retro.skipped_is_retro": "직전 합의 항목이 회고({rx_id})이므로 자동 회고를 건너뜁니다.",
   "respond.retro.skipped_no_script": "retro_script가 설정되지 않아 자동 회고를 건너뜁니다.",
   "retro.no_agreed_items": "(합의 완료 항목 없음)",
   "retro.marker_set": "[retro] 회고 마커 설정 ({rx_id}) — 다음 도구 사용 시 자동으로 회고가 시작됩니다.",
   "retro.no_claude_md": "[retro] claude.md를 찾을 수 없습니다. 회고를 건너뜁니다.",
-
   "pdoc.none_item": "- 없음",
   "pdoc.no_promotion_target": "- 현재 승격할 다음 작업 없음",
   "pdoc.no_next_task": "현재 등록된 다음 작업 없음",
   "pdoc.close_task": "{label}를 닫기",
   "pdoc.close_tasks": "{head}와 {last}를 닫기",
-
   "index.format.missing_section": "[FORMAT_MISSING_SECTION] '### {label}' 섹션이 없습니다.",
   "index.format.glob_in_test": "[FORMAT_GLOB_IN_TEST] Test Command에 glob 패턴이 포함되어 있습니다. 명시적 파일 목록을 사용하세요.",
   "index.format.empty_result": "[FORMAT_EMPTY_RESULT] Test Result가 비어있거나 너무 짧습니다. 터미널 출력을 복붙하세요.",
@@ -85,15 +80,12 @@
   "index.audit.started_async": "\n[consensus-loop] {tag} 감지 → 백그라운드 감사 시작 (PID {pid}).\n로그: {log}\n\n[ACTION REQUIRED] 감사가 백그라운드에서 실행 중입니다.\n1. 사용자의 다른 작업 요청을 계속 처리하세요.\n2. CronCreate 도구로 3분 간격 감시 태스크를 등록하세요 — audit.lock 존재 여부와 gpt.md 변경을 확인하고 respond.mjs를 실행합니다.\n3. 감사 완료 시 다음 도구 사용에서 자동 동기화됩니다.\n",
   "index.audit.already_running": "\n[consensus-loop] 감사가 이미 실행 중입니다 (PID {pid}). 중복 실행을 건너뜁니다.\n",
   "index.timestamp.label": "감사 완료",
-
   "gate.protocol": "\n[ACTION REQUIRED — CYCLE COMPLETION]\n감사 사이클이 완료되었습니다. 사용자의 지시를 기다리지 말고 즉시 전체 사이클을 완료하세요.\n\n## 합의 완료 항목\n{context}\n\n## 1단계: 회고 (Bash 차단 중 — Read/Write/Edit만 가능)\n1. 이번 사이클에서 잘된 것 / 문제인 것을 사용자에게 제시\n2. 사용자와 피드백 교환 (칭찬이 아닌 솔직한 개선점)\n3. 피드백에서 반복 가능한 원칙 → 메모리에 기록\n4. 메모리 정리 — 중복/stale 항목 제거\n\n## 2단계: 커밋 + 핸드오프 (echo 후 Bash 해제)\n5. echo session-self-improvement-complete\n6. 변경 사항 커밋 (git add → commit)\n7. 핸드오프 갱신 — memory/session_handoff.md + sync-handoff.mjs\n\n## 3단계: 다음 작업 착수\n8. gpt.md의 '## 다음 작업' 섹션을 읽고 다음 작업을 즉시 시작\n9. 구현 → 증거 제출 → 감사 → 루프 순환\n",
   "gate.blocked": "[SESSION GATE] 회고 프로토콜 미완료 — {tool} 차단됨.\nRead/Write/Edit로 메모리 정리 후 'echo session-self-improvement-complete'를 실행하세요.\n",
-
   "subagent.stop.completed": "[consensus-loop] 서브에이전트 '{agent}' 완료.",
   "subagent.stop.deferred_retro": "[ACTION REQUIRED — 위임된 회고]\nimplementer 세션에서 회고({rx_id})가 발생했지만 이 세션으로 위임되었습니다.\n합의 항목:\n{items}\n\n이 세션에서 회고 프로토콜을 완료하세요:\n1. 잘된 것 / 문제인 것 정리\n2. 사용자와 피드백 교환\n3. 반복 가능한 원칙 → 메모리 기록\n4. echo session-self-improvement-complete",
   "handoff.sync.success": "[handoff] 메모리 동기화 완료: {dir}",
   "handoff.sync.skip": "[handoff] 건너뜀: {reason}",
-
   "pdoc.title": "# 피드백 승격 인덱스",
   "pdoc.meta": "> 상태: `active` | 유형: 피드백 루프 승격 기준 | 생성: `.claude/hooks/consensus-loop/respond.mjs`",
   "pdoc.purpose_heading": "## 목적",
@@ -102,5 +94,18 @@
   "pdoc.rule_body": "- 현재 감사 범위가 모두 `{agree_tag}`이면 `{gpt_file}`의 `## {next_task}`은 이 문서의 `## {promotion_target}` 첫 항목을 사용한다.\n- `{feedback_glob}`에 남아 있는 별도 `{pending_tag}` 감사 항목은, 이미 합의된 트랙의 다음 improved 작업 승격을 자동으로 막지 않는다.",
   "pdoc.agreed_heading": "## 현재 합의된 트랙",
   "pdoc.target_heading": "## 현재 승격 대상",
-  "pdoc.source_heading": "## 근거 문서"
+  "pdoc.source_heading": "## 근거 문서",
+  "repo.validator_pass": "검증 통과",
+  "repo.validator_fail": "검증 실패",
+  "repo.artifact_replay": "아티팩트 리플레이",
+  "repo.lexical_profile": "어휘 프로파일",
+  "repo.retrieval_feedback": "검색 상태",
+  "repo.hidden_reason": "숨김 사유",
+  "workflows.retrieval_mode": "검색 모드",
+  "workflows.retrieval_mode_lexical": "어휘 검색",
+  "workflows.retrieval_mode_semantic": "의미 검색",
+  "workflows.retrieval_mode_hybrid": "혼합 검색",
+  "tool_call.running": "실행 중",
+  "tool_call.success": "완료",
+  "tool_call.error": "오류"
 }

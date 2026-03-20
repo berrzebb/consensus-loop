@@ -24,6 +24,7 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash|Agent",
         "hooks": [
           {
             "type": "command",
@@ -56,6 +57,29 @@
         ]
       }
     ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/post-compact.mjs",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "implementer|scout",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/subagent-start.mjs",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
     "SubagentStop": [
       {
         "matcher": "implementer",
@@ -64,6 +88,50 @@
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/subagent-stop.mjs",
             "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/worktree-create.mjs",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/worktree-remove.mjs",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/teammate-idle.mjs",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/task-completed.mjs",
+            "timeout": 60000
           }
         ]
       }
