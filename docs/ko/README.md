@@ -35,17 +35,23 @@ consensus-loop/
 │   ├── verify-implementation/ ← consensus-loop:verify — done-criteria verification
 │   ├── merge-worktree/    ← consensus-loop:merge — 워크트리 결과 스쿼시 머지
 │   ├── planner/           ← consensus-loop:planner — 플래닝 + 작업 분해
+│   ├── consensus-tools/   ← consensus-loop:tools — 9개 MCP 도구 CLI 인터페이스
 │   └── consensus-loop/    ← consensus-loop:guide — 증거 패키지 가이드
 │
 ├── agents/
 │   ├── implementer.md     ← Headless worker (worktree isolation, Sonnet)
 │   └── scout.md           ← Read-only RTM generator (3-way traceability, Opus)
 │
-├── scripts/               ← Deterministic tools + MCP server
-│   ├── mcp-server.mjs     ← MCP server: code_map, dependency_graph, audit_scan, coverage_map
-│   ├── code-map.mjs       ← Symbol index generator
-│   ├── audit-scan.mjs     ← Pattern scanner
-│   ├── coverage-mapper.mjs← Coverage → RTM mapper
+├── scripts/               ← 결정론적 도구 + MCP 서버 + CLI
+│   ├── mcp-server.mjs     ← MCP 서버 진입점 (JSON-RPC 2.0 over stdio)
+│   ├── tool-core.mjs      ← 공유 도구 구현 (순수 함수, IO 없음)
+│   ├── tool-runner.mjs    ← CLI 진입점: node tool-runner.mjs <tool> --param value
+│   ├── code-map.mjs       ← 독립 심볼 인덱스 생성기
+│   ├── audit-scan.mjs     ← 패턴 스캐너
+│   ├── coverage-mapper.mjs← Coverage → RTM 매퍼
+│   ├── fvm-generator.mjs  ← FE 라우트 × API × BE 엔드포인트 × 접근 정책 → FVM 테이블
+│   ├── fvm-validator.mjs  ← HTTP 러너: FVM 행을 실제 서버에 실행
+│   ├── enforcement.mjs    ← 구조적 강제 (upstream delay, tech debt, FP detection)
 │   └── add-locale-key.mjs ← Locale key helper
 │
 ├── commands/              ← CLI commands (auto-discovered)
@@ -77,7 +83,8 @@ consensus-loop/
 │       ├── ko/            ← 한국어 정책
 │       └── en/            ← 영문 정책
 │
-├── tests/
+├── tests/                ← 플러그인 유닛/통합 테스트 (Node.js 빌트인 러너)
+├── test-harness/         ← 격리된 TypeScript 프로젝트 — 전체 사이클 검증 (44 tests, 10 시나리오)
 ├── plans/                 ← 예제 플래닝 문서 (ko/en)
 ├── examples/              ← 예제 config + 템플릿
 │
@@ -225,7 +232,7 @@ cp examples/config.example.json config.json
 
 **4. 템플릿 + references 복사:**
 ```
-cp -r examples/templates/ templates/
+cp -r examples/ko/templates/ templates/   # 또는 examples/en/templates/ (영문 프로젝트)
 ```
 
 references 파일을 팀 정책에 맞게 조정.

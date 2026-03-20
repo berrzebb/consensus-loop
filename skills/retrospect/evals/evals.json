@@ -1,0 +1,23 @@
+{
+  "skill_name": "consensus-loop:retrospect",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "이번 세션에서 뭘 배웠는지 정리해줘",
+      "expected_output": "Phase 1-6 흐름 실행: 대화 마이닝 + audit_history → 후보 테이블 → 사용자 승인 대기",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "메모리가 너무 많아진 것 같아. 정리해줘",
+      "expected_output": "기존 메모리 전수 조사 → stale/duplicate 탐지 → 삭제/업데이트 후보 테이블 → 승인 후 실행 → integrity 검증",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "/consensus-loop:retrospect OR",
+      "expected_output": "audit_history에서 OR 트랙 필터링 → 트랙 한정 rejection 패턴 + 학습 후보 → 승인 대기",
+      "files": []
+    }
+  ]
+}

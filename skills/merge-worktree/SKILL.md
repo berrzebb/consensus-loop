@@ -18,6 +18,15 @@ This skill is invoked by the **orchestrator** after:
 2. Implementer's WIP commit completed
 3. **Retrospective protocol completed** (session-gate released via `session-self-improvement-complete`)
 
+## Execution Context
+
+| Context | Behavior |
+|---------|----------|
+| **Interactive** | Report merge result → ask about cleanup |
+| **Headless** | Merge → verify → report result → do NOT cleanup (orchestrator decides) |
+
+In headless mode, do NOT ask "keep worktree or remove?" — report the result and exit. The orchestrator handles cleanup.
+
 ## Current Context
 
 - Git dir: `!git rev-parse --git-dir`
@@ -128,7 +137,19 @@ All commands use absolute paths or `git -C` — shell state does not persist bet
    git -C "${ORIGINAL_ROOT}" commit -m "<generated_message>"
    ```
 
-3. **Report result to orchestrator**:
+3. **Verify merge commit exists**:
+   ```bash
+   git -C "${ORIGINAL_ROOT}" log -1 --oneline
+   ```
+   The output must show the new squash commit with the generated message. If not → **merge failed** — report error, do NOT proceed to cleanup.
+
+4. **Verify no uncommitted changes remain**:
+   ```bash
+   git -C "${ORIGINAL_ROOT}" status --porcelain
+   ```
+   Must be empty. If not → **partial merge** — report and stop.
+
+5. **Report result to orchestrator**:
    ```markdown
    ## Merge Complete
 
@@ -136,6 +157,7 @@ All commands use absolute paths or `git -C` — shell state does not persist bet
    - Commits squashed: N
    - Files changed: M
    - Commit: <short_sha> <first_line>
+   - Verified: commit exists ✅, working tree clean ✅
 
    Worktree can be removed with:
    `git worktree remove <worktree_path>`
@@ -174,6 +196,29 @@ Redis uses XRANGE.
 Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
 ```
 
+## Emergency Rollback
+
+If post-merge verification fails (tests break, build fails):
+
+1. **Identify the squash commit**: `git log -1 --oneline` → note the SHA
+2. **Revert the merge commit**:
+   ```bash
+   git -C "${ORIGINAL_ROOT}" revert --no-edit <merge-sha>
+   ```
+3. **Verify revert**: `git -C "${ORIGINAL_ROOT}" diff HEAD~1..HEAD --stat` shows the inverse
+4. **Run tests**: confirm the revert restores passing state
+5. **Report to orchestrator**:
+   ```markdown
+   ## Emergency Rollback
+   - Reverted: <merge-sha> (<commit message>)
+   - Reason: <what failed>
+   - Status: tests passing after revert
+   - Action needed: task returns to `correcting` status
+   ```
+6. **Update handoff**: task status → `correcting`, note rollback reason
+
+Do NOT use `git reset --hard` — revert creates an audit trail. Hard reset loses history.
+
 ## Exceptions
 
 - Do NOT merge if `git status --porcelain` shows uncommitted changes
@@ -181,3 +226,5 @@ Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
 - Do NOT delete the worktree without orchestrator decision
 - Do NOT merge if `consensus-loop:verify` has unresolved failures
 - Do NOT merge if retrospective is pending (`retro_pending: true`)
+- **Do NOT report success without verifying the squash commit exists in git log**
+- **Do NOT proceed to cleanup if `git status --porcelain` shows uncommitted changes**

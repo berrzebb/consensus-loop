@@ -8,7 +8,16 @@ allowed-tools: Read, Grep, Glob, Bash(npx *), Bash(node *), Bash(git diff *), Ba
 
 # Implementation Verification
 
-Runs all done-criteria checks before evidence submission. Criteria loaded from `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`. Passing all checks means the evidence is ready for audit.
+Run all done-criteria checks before evidence submission. Criteria from `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`.
+
+## Execution Context
+
+| Context | Behavior |
+|---------|----------|
+| **Interactive** | Run checks → present report → suggest fixes |
+| **Headless** | Run checks → output report → exit with status code (0 = all pass, 1 = failures) |
+
+In headless mode, do NOT ask "should I fix this?" — output the report and exit. The caller (implementer agent) reads the report and decides.
 
 ## Quick Reference
 
@@ -16,105 +25,29 @@ Runs all done-criteria checks before evidence submission. Criteria loaded from `
 |---|----------|-----------|------|
 | 1 | Code Quality (CQ) | `npx eslint <file>`, `npx tsc --noEmit`, audit-scan type-safety | Bash |
 | 2 | Test (T) | Execute evidence test commands, check direct tests exist | Bash |
-| 3 | Claim-Code (CC) | `git diff --name-only` vs Changed Files | Bash, Grep |
+| 3 | Claim-Code (CC) | Diff scope vs Changed Files | Bash, Grep |
 | 4 | Cross-Layer (CL) | BE→FE contracts, consumer existence | Read, Grep |
 | 5 | Security (S) | Input validation, auth guards, audit-scan hardcoded | Grep, Read |
 | 6 | i18n (I) | Locale keys in ALL locale files | Grep |
-| 7 | Frontend (FV) | Page loads, DOM elements, console errors, build | Browser (if FE files changed) |
-| 8 | Coverage (CV) | stmt ≥ 85%, branch ≥ 75% per changed file | MCP coverage_map or Bash |
+| 7 | Frontend (FV) | Page loads, DOM elements, console errors, build | Browser (if FE) |
+| 8 | Coverage (CV) | stmt ≥ 85%, branch ≥ 75% per changed file | tool-runner.mjs |
 
 ## Workflow
 
 ### Step 1: Gather Context
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/config.json` → extract `consensus.trigger_tag`, `consensus.watch_file`
-2. Read the watch file — find the section containing `trigger_tag`
+1. Read config → extract `consensus.trigger_tag`, `consensus.watch_file`
+2. Read watch file → find section with `trigger_tag`
 3. Parse: Claim, Changed Files, Test Command, Test Result, Residual Risk
-4. Extract the list of changed files from `### Changed Files`
+4. Extract changed file list
 
-If no trigger_tag section found → report "No evidence to verify" and stop.
+No trigger_tag section → "No evidence to verify" → stop.
 
-### Step 2: Code Quality (CQ)
+### Steps 2-8: Run Checks
 
-```bash
-# CQ-1: Per-file eslint
-for file in <changed_files>; do npx eslint "$file"; done
+Read `references/checks.md` for detailed commands and criteria per category.
 
-# CQ-2: Type check
-npx tsc --noEmit
-
-# CQ-4: No forbidden patterns in new code
-node ${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs type-safety
-```
-
-Record: PASS or FAIL with file:line for each failure.
-
-### Step 3: Test (T)
-
-```bash
-# T-1: Execute evidence test commands exactly as written
-<test_command_from_evidence>
-
-# T-3: Check for regressions in related scope
-npx vitest run <related_test_dirs>
-```
-
-For T-2 (direct test exists): Grep for test files that import/reference changed modules.
-
-Record: PASS or FAIL with test counts.
-
-### Step 4: Claim-Code Consistency (CC)
-
-Compare `### Changed Files` from evidence against `git diff --name-only`.
-Flag any file in diff but not in evidence, or vice versa.
-
-### Step 5: Cross-Layer Contract (CL)
-
-For each changed file:
-- If BE file → check if evidence documents what FE needs
-- If new interface/port → grep for at least one consumer
-- If infra change → check if affected consumers are listed
-
-Record: PASS, FAIL, or N/A.
-
-### Step 6: Security (S)
-
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs hardcoded
-```
-
-For new API endpoints: check for auth guard in route handler.
-
-### Step 7: i18n (I)
-
-For changed files containing user-facing strings: check ko.json AND en.json.
-
-### Step 8: Frontend Verification (FV)
-
-Only runs if changed files include frontend paths (e.g., `web/`, `src/dashboard/`).
-
-Check: page loads, elements exist in DOM, no console errors, build succeeds.
-
-### Step 8.5: Coverage Verification (CV)
-
-Requires `npm run test:coverage` to have been run (produces `coverage/coverage-summary.json`).
-
-```bash
-# Option A: MCP tool (if available)
-# coverage_map tool with path filter
-
-# Option B: CLI script
-node ${CLAUDE_PLUGIN_ROOT}/scripts/coverage-mapper.mjs <rtm-file> --coverage-dir coverage/
-```
-
-For each changed **source** file (exclude test files):
-- CV-1: `statements.pct` ≥ 85%
-- CV-2: `branches.pct` ≥ 75%
-- CV-3: File present in coverage-summary.json (coverage data exists)
-
-Record: PASS or FAIL with file + actual% vs threshold.
-
-### Step 9: Integrated Report
+### Step 9: Verification Report
 
 ```markdown
 ## Verification Report
@@ -136,9 +69,15 @@ Record: PASS or FAIL with file + actual% vs threshold.
 If all pass → "Ready for evidence submission."
 If any fail → list issues with fix recommendations.
 
-## Exceptions
+## Completeness Rule
 
-- Files in `node_modules/`, `.git/`, `coverage/` are excluded
-- Test files (`*.test.ts`, `*.spec.ts`) are exempt from CQ-4
-- FV checks are skipped if no frontend files in Changed Files
-- CL checks are N/A for pure refactoring (no new interfaces)
+**Every category row (1-8) must have a status:**
+
+| Status | When |
+|--------|------|
+| PASS | Check ran and passed |
+| FAIL (N issues) | Check ran and found problems |
+| SKIP | Not applicable — **must include reason** |
+| N/A | Cannot be evaluated — **must include reason** |
+
+A report with any blank status cell is incomplete. Fill all 8 rows before outputting.

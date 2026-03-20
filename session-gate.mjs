@@ -101,7 +101,19 @@ if (ALLOWED_TOOLS.includes(tool_name)) {
   if (!marker.instructions_shown) {
     write_marker({ ...marker, instructions_shown: true });
     const context = marker.agreed_items || t("retro.no_agreed_items");
-    process.stdout.write(t("gate.protocol", { context }));
+    let output = t("gate.protocol", { context });
+
+    // Structural enforcement: inject policy review requirement into retrospective
+    if (marker.policy_review_needed && marker.policy_review_needed.length > 0) {
+      output += `\n\n⚠️ **[ENFORCEMENT] Policy Review Required**\n`;
+      output += `The following rejection codes have >30% false positive rate and need policy file review:\n`;
+      for (const code of marker.policy_review_needed) {
+        output += `- \`${code}\` → check \`templates/references/{locale}/rejection-codes.md\` and \`test-checklist.md\`\n`;
+      }
+      output += `\nThis is a structural enforcement, not a suggestion. Address before completing retrospective.\n`;
+    }
+
+    process.stdout.write(output);
   }
   process.exit(0);
 }

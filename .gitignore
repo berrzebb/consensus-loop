@@ -21,3 +21,5 @@ hook-debug.log
 
 # Build artifacts
 *.zip
+test-harness/node_modules/
+retrospect-workspace/

@@ -9,6 +9,27 @@ disable-model-invocation: true
 
 You are the orchestrator. You do NOT implement — you distribute, verify, and decide.
 
+## References
+
+Read the corresponding reference when entering each phase:
+
+| Phase | Reference | When |
+|-------|-----------|------|
+| **Task complexity tiers** | `references/tiers.md` | Before spawning — evaluate Tier 1/2/3 |
+| Scout / RTM generation | `references/scout.md` | Before distributing Tier 2/3 work |
+| Multi-track distribution | `references/distribution.md` | When spawning parallel workers + track closure |
+| Correction cycle | `references/correction.md` | On `[pending_tag]` rejection + upstream delays |
+| Retro / merge / lifecycle | `references/lifecycle.md` | After `[agree_tag]` + session end audit |
+
+## Execution Context
+
+| Context | Detection | Behavior |
+|---------|-----------|----------|
+| **Interactive** | Main session, user present | Present options → wait for selection → execute |
+| **Headless** | Subagent, no human | Auto-select unblocked tasks → execute → report |
+
+**In headless mode, NEVER ask questions.** Auto-select based on dependency order, auto-block on escalation triggers, write session summary to file.
+
 ## Setup
 
 Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
@@ -17,261 +38,96 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 - `plugin.respond_file` → auditor verdict file
 - `plugin.handoff_file` → session handoff path (default: `.claude/session-handoff.md`)
 
-## Current State
-
-`session-start.mjs` auto-injects the following via `additionalContext`:
-- Handoff contents (pending tasks, agent assignments)
-- Audit status (audit.lock, retro-marker, compaction-snapshot)
-- Resume instructions (how to continue interrupted work)
-
-**Check the auto-injected context first**, then query only what's missing:
-- Recent commits: `git log --oneline -5`
-- Audit verdict: read respond file
-
 ## Session Start
 
-1. Review the auto-injected context from session-start.mjs
+1. Review auto-injected context from `session-start.mjs`
 2. Parse handoff → build dependency graph → identify **all unblocked tasks**
-3. Check for active agents (tasks with `agent_id` field) → present resumption options
+3. Check for active agents (tasks with `agent_id`) → present resumption options
 4. Present available tasks with dependencies, blocked status, and agent assignments
-5. Wait for user selection (or auto-select if headless)
+5. Wait for user selection (interactive) or auto-select (headless)
 
 ## Agent Registry
 
-The orchestrator tracks agent assignments in the **handoff file** itself. Each task may have:
+Track agent assignments in the **handoff file**:
 
 ```markdown
 ### [task-id] Task Title
 - **status**: not-started | in-progress | auditing | correcting | done
 - **depends_on**: other-task-id | —
 - **blocks**: other-task-id | —
-- **agent_id**: <agent-id>           ← returned by Agent tool
-- **worktree_path**: <path>          ← worktree directory
-- **worktree_branch**: <branch>      ← worktree branch name
+- **agent_id**: <agent-id>
+- **worktree_path**: <path>
+- **worktree_branch**: <branch>
 ```
 
-### Registry Rules
+Registry rules:
+1. **On spawn**: Record `agentId`, `worktreePath`, `worktreeBranch` in handoff
+2. **Correction**: SendMessage to existing `agent_id` — never spawn new agent
+3. **On completion**: Update status to `done`, keep agent fields
+4. **On restart**: Attempt `SendMessage` to resume `in-progress` tasks
 
-1. **On spawn**: Record `agentId`, `worktreePath`, `worktreeBranch` from Agent tool return value into handoff
-2. **Correction cycle**: Send correction via `SendMessage` to existing `agent_id` — never spawn a new agent
-3. **On completion**: Update status to `done`, keep agent fields for reference
-4. **On session restart**: Attempt `SendMessage` to resume `in-progress` tasks that have `agent_id`
-
-## Multi-Track Distribution
-
-Tasks with no unmet `depends_on` can be **distributed in parallel**.
-
-### Scope Validation (non-overlap check)
-
-Before parallel distribution, verify no scope conflicts:
-
-1. **Estimate file scope**: Extract target files/directories from each task's description
-2. **Detect overlap**: If the same file appears in 2+ tasks → **serialize** them
-3. **Directory-level conflict**: Tasks touching the same directory → warn
-4. **Safe parallel**: Only tasks touching different modules/directories run in parallel
-
-### Parallel Spawn
-
-Issue multiple Agent tool calls in a single message:
-
-```json
-// Agent tool call 1
-{
-  "prompt": "[task-A context + handoff section + done-criteria]",
-  "subagent_type": "consensus-loop:implementer",
-  "isolation": "worktree",
-  "run_in_background": true,
-  "description": "implement task-A"
-}
-
-// Agent tool call 2 (same message)
-{
-  "prompt": "[task-B context + handoff section + done-criteria]",
-  "subagent_type": "consensus-loop:implementer",
-  "isolation": "worktree",
-  "run_in_background": true,
-  "description": "implement task-B"
-}
-```
-
-- **Always use `run_in_background: true`** — orchestrator is freed immediately to update handoff, prepare next tasks, or handle other agent completions
-- Each agent runs in an isolated worktree
-- Record each `agentId` in handoff on return (agent completion triggers automatic notification)
-- Maximum 3 concurrent agents (rate limit prevention)
-
-## Scout Phase (RTM generation)
-
-Before distributing work, the orchestrator dispatches a **scout** to produce a Requirements Traceability Matrix (RTM) by comparing work-breakdown definitions against the actual codebase.
-
-The RTM is the **single source of truth** that all agents share. It eliminates redundant exploration.
-
-### Flow
+## Core Loop
 
 ```
-Orchestrator selects track(s)
+Session Start
     ↓
-Scout reads: execution-order → README → work-breakdown → codebase
+Evaluate Tier → read references/tiers.md
     ↓
-Produces 3 matrices:
-  Forward RTM   — requirement → code → test (gap detection)
-  Backward RTM  — test → code → requirement (orphan detection)
-  Bidirectional — cross-reference summary (coverage analysis)
+┌─ Tier 1 (Micro): direct fix → verify CQ+T → commit → next task
+├─ Tier 2 (Standard): scout? → worktree → audit cycle → retro → merge
+└─ Tier 3 (Complex): mandatory scout → worktree → full audit → post-merge regression → retro
     ↓
-Orchestrator distributes Forward RTM rows to implementers
+Result Verification
+  ├─ [agree_tag] → Retro & Merge → read references/lifecycle.md
+  └─ [pending_tag] → Correction → read references/correction.md → loop
+    ↓
+Write Handoff → next task → loop
 ```
-
-### Procedure
-
-1. **Spawn scout agent** — read-only, thorough analysis (Opus):
-   ```json
-   {
-     "prompt": "[target tracks + design doc paths]",
-     "subagent_type": "scout",
-     "description": "scout RTM for [track-name]"
-   }
-   ```
-   Scout agent definition: `agents/scout.md`
-   RTM format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/traceability-matrix.md`
-
-2. **Receive 3 matrices**:
-   - **Forward RTM**: Req ID × File with Exists/Impl/Test Case/Connected columns filled
-   - **Backward RTM**: Existing tests traced back to requirements (orphan detection)
-   - **Bidirectional summary**: Gap analysis — requirements without tests, tests without requirements
-
-3. **Orchestrator uses Forward RTM to**:
-   - Identify open rows (⬜) → these are the work items to distribute
-   - Validate non-overlapping file scopes for parallel distribution
-   - Assign rows to implementers by Req ID grouping
-
-4. **Orchestrator uses Backward RTM to**:
-   - Detect orphan tests/code that should be cleaned up
-   - Verify connection chains across tracks
-
-### RTM Staleness Check
-
-Before distributing work from an existing RTM, verify it's not stale:
-
-1. Compare `work-breakdown.md` mtime vs `rtm-{domain}.md` mtime
-2. If work-breakdown is newer → **RTM is stale** → re-run scout (incremental)
-3. If execution-order.md is newer → cross-track connections may be invalid → re-run scout
-
-Present staleness warning:
-> "RTM for evaluation-pipeline was generated 2 hours ago, but work-breakdown.md was modified 30 minutes ago. Re-running scout to update RTM."
-
-### When to Skip Scout
-
-- RTM exists AND work-breakdown.md mtime < RTM mtime (RTM is fresh)
-- Correction round (Forward RTM rows already identified by auditor rejection)
-- Single-file trivial change
 
 ## Task Distribution
 
-After scout phase (or skipping it):
-
-1. Extract from handoff: task ID, status, depends_on, blocks, background
-2. Gather required context files:
+1. Extract from handoff: task ID, status, depends_on, blocks
+2. Gather context files:
    - Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
    - Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
-3. Compose worker prompt with: task context + **scout blueprint** (if available)
-4. Spawn implementer via **Agent tool** with `isolation: "worktree"`, `subagent_type: "consensus-loop:implementer"`, `run_in_background: true`
-5. **Record agent info**: `agentId`, `worktreePath`, `worktreeBranch` → handoff
-6. Update handoff status: `not-started` → `in-progress`
-7. **Continue working** — do not wait. Use the freed time to: update handoff, prepare next task context, spawn additional workers, or handle other agent completions
+3. Compose worker prompt with task context + scout blueprint (if available)
+4. Spawn implementer: `subagent_type: "consensus-loop:implementer"`, `isolation: "worktree"`, `run_in_background: true`
+5. Record agent info in handoff, update status: `not-started` → `in-progress`
+6. **Continue working** — do not wait
 
 ## Result Verification
 
 When worker completes:
-
-1. Read the worker's **worktree** watch_file (not main repo) — each worker writes evidence to its own worktree copy
-2. Read verdict file from the worker's worktree
-3. If `[agree_tag]` → worker commits WIP → proceed to **Retrospective & Merge**
-4. If `[pending_tag]` → **Correction Cycle**
-
-**Parallel evidence safety**: Each worktree-isolated worker writes to its own copy of the watch_file. Workers never overwrite each other's evidence. The orchestrator reads results from each worktree individually.
-
-## Correction Cycle (SendMessage)
-
-On `[pending_tag]` rejection — **send correction instructions to existing agent via SendMessage**:
-
-### Procedure
-
-1. Look up `agent_id` for the task in handoff
-2. Read rejection codes + rationale from gpt.md (respond file)
-3. Compose correction prompt:
-   ```
-   SendMessage(to: "<agent_id>") {
-     ## Correction Round: [task-id]
-     ### Rejection Codes: ...
-     ### Instructions: ...
-   }
-   ```
-4. Update handoff status: `auditing` → `correcting`
-5. Agent fixes and resubmits → re-enters audit loop
-
-### Correction Decision Matrix
-
-| Rejection Type | Action |
-|----------------|--------|
-| CQ (lint/type) | SendMessage — same agent, minor fix |
-| T (test failure) | SendMessage — same agent |
-| CC (mismatch) | SendMessage — same agent, rewrite evidence |
-| security/regression | Escalate to user — high risk |
-| 3+ repeated rejections | Escalate to user — approach needs rethinking |
-
-### When SendMessage Fails
-
-If the agent has terminated or is unresponsive:
-1. Spawn a new implementer via Agent tool (worktree isolation)
-2. Include previous rejection codes + existing worktree reference path in prompt
-3. Update `agent_id` in handoff
-
-## Retrospective & Merge
-
-After `[agree_tag]` and worker WIP commit:
-
-1. **Retrospective trigger**: `retro-marker.json` is automatically set to `retro_pending: true`
-   - `session-gate.mjs` blocks Bash/Agent until retrospective completes
-   - Only Read/Write/Edit/Glob/Grep/TodoWrite are allowed during retrospective
-   - For worktree sub-agents: `subagent-stop.mjs` marks as `deferred_to_orchestrator` → orchestrator performs the retrospective
-2. **Perform retrospective** (see `templates/references/${locale}/retro-questions.md`):
-   - What went well
-   - What was problematic
-   - Memory cleanup + update (see `templates/references/${locale}/memory-cleanup.md`)
-   - Bidirectional feedback
-3. **Release gate**: run `session-self-improvement-complete` in Bash → marker resets to `retro_pending: false`
-4. **Squash merge**: invoke `/consensus-loop:merge` to squash all WIP commits into a single structured commit on the target branch
-5. **Write session handoff**: update handoff file with completed task status + clear agent fields or mark completed
-6. **Loop**: return to Session Start → present next available task
+1. Read worker's **worktree** watch_file (not main repo)
+2. Read verdict file from worker's worktree
+3. `[agree_tag]` → proceed to Retro & Merge (read `references/lifecycle.md`)
+4. `[pending_tag]` → Correction Cycle (read `references/correction.md`)
 
 ## Planning
 
-When a task requires new track definition or existing track adjustment:
-
-1. Invoke `/consensus-loop:planner` with the requirement description
-2. Planner produces/updates: README.md, work-breakdown.md, execution-order.md, work-catalog.md
-3. Review planner output before proceeding to task distribution
+When a task requires new track definition:
+1. Invoke `/consensus-loop:planner` with the requirement
+2. Review planner output before proceeding
 
 ## Dependency Resolution
 
-Before spawning a worker, verify:
-
-1. All `depends_on` tasks are completed
+Before spawning, verify:
+1. All `depends_on` completed
 2. Required BE contracts exist (for FE tasks)
-3. Required infra is in place
-4. **Scope does not overlap** with currently active agents' tasks
+3. Required infra in place
+4. **Scope does not overlap** with active agents' tasks
 
-If blocked → skip → select next unblocked task.
+Blocked → skip → select next unblocked.
 
 ## Anti-Patterns
 
-- Do NOT implement code yourself — spawn a worker via Agent tool (`consensus-loop:implementer`)
-- Do NOT spawn a new agent for corrections — use SendMessage to the existing `agent_id`
+- Do NOT implement code yourself — spawn workers
+- Do NOT spawn new agent for corrections — SendMessage to existing `agent_id`
+- Do NOT declare track "done" without pre-close scout (see `references/distribution.md`)
 - Do NOT hold worker context in your window — read from files
-- Do NOT skip dependency checks — blocked tasks will fail
-- Do NOT distribute overlapping scopes in parallel — file conflicts will occur
-- Do NOT exceed 3 concurrent agents — rate limit risk
-- Do NOT retry the same approach 3+ times — escalate to user
-- Do NOT hardcode file paths — read from config.json
-- Do NOT skip retrospective — session-gate blocks commits until retrospective completes
-- Do NOT let implementer perform squash merge — that is YOUR responsibility via `/consensus-loop:merge`
-- Do NOT forget to write session handoff after each state change (spawn, verdict, merge)
+- Do NOT distribute overlapping scopes in parallel
+- Do NOT exceed 3 concurrent agents
+- Do NOT retry same approach 3+ times — escalate to user (interactive) or auto-block (headless)
+- Do NOT skip retrospective
+- Do NOT exit without Session Summary (see `references/lifecycle.md`)
+- **Do NOT ask questions in headless mode** — take safe default action

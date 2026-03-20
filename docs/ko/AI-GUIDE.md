@@ -60,6 +60,8 @@ Use deterministic tools before LLM reasoning — facts first, inference second:
 | `rtm_parse` | Parse RTM markdown → structured rows, filter by req_id/status | Scout, Implementer, Orchestrator |
 | `rtm_merge` | Row-level merge of worktree RTMs with conflict detection | Orchestrator, Merge |
 | `audit_history` | Query persistent audit history — verdicts, rejection patterns, risk detection | Orchestrator, Planner, Retrospective |
+| `fvm_generate` | FE 라우트 × API 호출 × BE 엔드포인트 × 접근 정책 교차 분석 → FVM 테이블 | Scout, Orchestrator, Verify |
+| `fvm_validate` | FVM 행을 HTTP fetch로 실행 — 역할별 인증 후 expected vs actual 비교 | Validator, Verify |
 
 ## Evidence Package Format
 
