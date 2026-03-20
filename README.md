@@ -1,5 +1,7 @@
 # consensus-loop
 
+> **⚠️ This project has evolved into [quorum](https://github.com/berrzebb/quorum) — a multi-model AI development harness with agent-to-agent communication and consensus-based delivery. New development happens there. This repo is frozen at v2.5.0.**
+
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19108370.svg)](https://doi.org/10.5281/zenodo.19108370)
 
 **AI writes code. A different AI reviews it. Nothing ships without consensus.**
