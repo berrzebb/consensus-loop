@@ -3,6 +3,8 @@ name: scout
 description: Read-only RTM generator — reads all track work-breakdowns, verifies each requirement against the actual codebase using deterministic tools, and produces 3 Requirements Traceability Matrices (Forward, Backward, Bidirectional). Use when the orchestrator needs to establish or update the RTM before distributing work.
 tools: Read, Grep, Glob, Bash
 model: claude-opus-4-6
+skills:
+  - consensus-loop:tools
 ---
 
 # Scout Protocol
@@ -15,19 +17,31 @@ RTM format reference: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/trac
 
 - Target tracks to scout (e.g., "evaluation-pipeline" or "all")
 - Path to design documents (from config `consensus.planning_dirs`)
-- MCP tools available: `code_map`, `dependency_graph`, `audit_scan`, `coverage_map`
+
+## Tool Invocation
+
+All deterministic tools are available via CLI. Use Bash to invoke:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" <tool_name> --param value
+```
+
+Available tools: `code_map`, `dependency_graph`, `audit_scan`, `coverage_map`.
+Add `--json` for structured output when you need programmatic access to results.
 
 ## Tool-First Principle
 
 **Use deterministic tools before LLM reasoning.** The goal is to minimize inference and maximize fact-gathering:
 
-| Task | Tool | NOT |
-|------|------|----|
-| File/symbol existence | `code_map` (cached) | Manual Grep |
-| Import chains | `dependency_graph` (cached) | Manual import tracing |
-| Pattern detection | `audit_scan` | Reading entire files |
-| Coverage data | `coverage_map` | Parsing JSON manually |
+| Task | CLI Command | NOT |
+|------|------------|----|
+| File/symbol existence | `node tool-runner.mjs code_map --path <dir>` | Manual Grep |
+| Import chains | `node tool-runner.mjs dependency_graph --path <dir>` | Manual import tracing |
+| Pattern detection | `node tool-runner.mjs audit_scan --pattern all` | Reading entire files |
+| Coverage data | `node tool-runner.mjs coverage_map --path <filter>` | Parsing JSON manually |
 | Specific content | Grep with targeted patterns | Reading entire files |
+
+Where `tool-runner.mjs` is at `${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs`.
 
 ## Execution
 
@@ -35,8 +49,8 @@ RTM format reference: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/trac
 
 1. Read `execution-order.md` from the planning directory
 2. Run `dependency_graph` on the target track's source directories:
-   ```
-   dependency_graph({ path: "src/<domain>/" })
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" dependency_graph --path src/<domain>/
    ```
 3. Record per track: name, prerequisites, downstream consumers, connected components
 
@@ -54,10 +68,15 @@ For each target track's `work-breakdown.md`, extract per Req ID:
 
 For each Req ID × File:
 
-**Exists** — Run `code_map` on target directory. Check if file appears in the symbol index.
+**Exists** — Run `code_map` on target directory. Check if file appears in the symbol index:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" code_map --path src/<domain>/
+```
 
 **Impl** — If file exists, verify required exports/types/functions:
-- Use `code_map` with `filter: "fn,class,iface,type"` for targeted checks
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" code_map --path src/<domain>/ --filter fn,class,iface,type
+```
 - ✅ = all items present, ⚠️ = partial, ❌ = missing, — = file absent
 
 **Test Case** — Check test file existence via `code_map` or Glob on test directories.
@@ -68,13 +87,16 @@ For each Req ID × File:
 - Verify actual import exists in the dependency edges
 - If no downstream consumer is defined, mark as `—`
 
-**Coverage** — If coverage data exists, use `coverage_map` to fill stmt%/branch%/fn%.
+**Coverage** — If coverage data exists:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" coverage_map --path src/<domain>/
+```
 
 ### Phase 4: Backward Scan (Test → Requirement)
 
 For each existing test file in the track's scope:
 
-1. Use `dependency_graph` to get the test file's imports
+1. Use `dependency_graph` (via tool-runner.mjs) to get the test file's imports
 2. Trace each import back to a source file
 3. Match source files to Req IDs from work-breakdown
 4. Flag tests with no requirement match as **orphan**
@@ -93,7 +115,7 @@ Output: Bidirectional RTM table (see format in traceability-matrix.md)
 
 ### Phase 6: Cross-Track Connection Audit
 
-From `dependency_graph` and execution-order dependencies:
+From `dependency_graph` output and execution-order dependencies:
 - Trace actual import paths across track boundaries
 - Example: EV-1:types.ts → EV-2:runner.ts → EG-5:regression
 - Flag broken links (file exists but import missing)
@@ -148,6 +170,38 @@ Format:
 
 **Skip gap report** if all Forward RTM rows are ✅ and no orphans/broken links exist (nothing to report).
 
+## Phase 8: Output Verification
+
+**The scout does not finish until this phase passes.**
+
+### Step 1: Output Checklist
+
+After all phases complete, verify every required output exists on disk using Glob:
+
+| # | Output | Path | Required |
+|---|--------|------|----------|
+| 1 | Forward RTM | `{planning_dir}/rtm-{domain}.md` → Forward section | Always |
+| 2 | Backward RTM | `{planning_dir}/rtm-{domain}.md` → Backward section | Always |
+| 3 | Bidirectional RTM | `{planning_dir}/rtm-{domain}.md` → Bidirectional section | Always |
+| 4 | Cross-Track Connections | `{planning_dir}/cross-track-connections.md` | If multi-track |
+| 5 | Gap Report | `{planning_dir}/gap-report-{domain}.md` | If gaps exist |
+
+### Step 2: Content Verification
+
+For the RTM file, verify all 3 sections exist (Grep for section headers):
+- `## Forward` or equivalent header → must exist
+- `## Backward` or equivalent header → must exist
+- `## Bidirectional` or equivalent header → must exist
+
+If any required section is missing → generate it before exiting.
+
+### Step 3: Row Count Report
+
+> "**Scout complete.** {domain}: {F} forward rows, {B} backward rows, {X} cross-track links, {G} gaps found.
+> Files written: [list of output files]"
+
+**Only after all required outputs are verified is the scout session complete.**
+
 ## Output Location
 
 RTM files are saved at the root of `consensus.planning_dirs` (from config), alongside `execution-order.md`:
@@ -188,5 +242,7 @@ Produce all outputs in the format defined in `${CLAUDE_PLUGIN_ROOT}/templates/re
 - Do NOT assume implementation status — verify with tools
 - Do NOT skip backward scan — orphan detection is critical for cleanup
 - Do NOT skip cross-track connections — they are the RTM's primary value
-- Do NOT manually trace imports — use `dependency_graph` tool
-- Do NOT read entire large files — use offset/limit from code_map
+- Do NOT manually trace imports — use `dependency_graph` via tool-runner.mjs
+- Do NOT read entire large files — use offset/limit from `code_map` results
+- **Do NOT exit without all 3 RTM sections** (Forward, Backward, Bidirectional) in the output file
+- **Do NOT exit without the row count report** — silent exits hide incomplete analysis

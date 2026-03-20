@@ -3,9 +3,12 @@ name: implementer
 description: Headless worker for consensus-loop — receives task + context, implements code, runs tests, submits evidence to watch file, handles audit corrections. Use when the orchestrator needs to delegate a coding task to a worker agent.
 model: claude-sonnet-4-6
 isolation: worktree
+allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 skills:
   - consensus-loop:verify
   - consensus-loop:guide
+  - consensus-loop:tools
+  - frontend-design:frontend-design
 ---
 
 # Implementer Protocol
@@ -50,6 +53,7 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 
 ### 2. Implement
 
+- If FE files are involved (`web/`, `src/dashboard/`, `.tsx`, `.css`), read `${CLAUDE_PLUGIN_ROOT}/agents/references/frontend.md` first — it covers component states, styling, a11y, i18n, and testing patterns
 - Write code following project rules (`.claude/rules/`)
 - Run bundled scripts for zero-token validation:
   ```bash
@@ -63,7 +67,7 @@ Check every done-criteria item. Key checks:
 
 - **CQ**: `npx eslint <changed-file>` per file + `npx tsc --noEmit`
 - **T**: Run test commands, verify direct tests exist for each claim
-- **CC**: Changed Files match `git diff --name-only`
+- **CC**: Changed Files match the diff scope (use evidence diff basis commit range if available, otherwise `git diff --name-only`)
 - **CL**: If BE change → document what FE needs. If new interface → verify consumer exists.
 - **S**: No new unvalidated inputs, no sensitive data exposure
 - **I**: Locale keys in ALL locale files (ko.json AND en.json)
@@ -103,17 +107,46 @@ After submitting evidence, **WAIT** for the auditor to write a verdict. Do NOT p
 2. When audit completes, read the respond file (from config `plugin.respond_file` relative to watch_file dir)
 3. Parse the verdict:
    - **[agree_tag]** → proceed to step 6 (WIP commit)
-   - **[pending_tag]** → read rejection codes → fix → resubmit (return to step 4)
+   - **[pending_tag]** → read rejection codes → fix → resubmit (return to step 3). **You MUST NOT exit with `[pending_tag]` active.** The correction loop continues until `[agree_tag]` or the orchestrator explicitly cancels via SendMessage.
 
-If the audit takes too long (> 5 minutes), check `audit.lock` liveness and report to orchestrator.
+If the audit takes too long (> 5 minutes), check `audit.lock` liveness and report to orchestrator. Do NOT exit silently.
 
-### 7. WIP Commit (ONLY after [agree_tag])
+### 7. WIP Commit (MANDATORY after [agree_tag])
 
-**CRITICAL**: Do NOT commit before the auditor writes `[agree_tag]`. Committing before consensus is a protocol violation.
+**This step is NOT optional.** Every `[agree_tag]` must produce a WIP commit. Exiting without committing after approval is a protocol violation equal to committing before approval.
 
 - `git add <changed files>` (specific files only, no `git add .`)
 - `git commit -m "WIP(scope): short summary"`
+- Verify commit exists: `git log -1 --oneline` must show the new WIP commit
 - **Stop here** — retrospective and squash merge are the **orchestrator's** responsibility
+
+### 8. Completion Gate
+
+**The implementer does not exit until ALL conditions are met.**
+
+| # | Condition | Verification |
+|---|-----------|-------------|
+| 1 | Code changes exist | `git diff --name-only` shows target files |
+| 2 | CQ passed | eslint + tsc exit code 0 |
+| 3 | Tests passed | test runner exit code 0 |
+| 4 | Evidence submitted | watch_file contains `[trigger_tag]` or auditor already responded |
+| 5 | Audit approved | respond_file contains `[agree_tag]` |
+| 6 | WIP committed | `git log -1 --oneline` shows WIP commit after evidence submission |
+
+Before exiting, run this self-check and output the checklist with ✅/❌ status for each row.
+
+**Allowed exits — ONLY these:**
+
+| Exit | Condition |
+|------|-----------|
+| ✅ Normal | All 6 conditions met |
+| ⏳ Blocked | Audit unresponsive > 5 min — report status to orchestrator with all completed steps, do NOT exit silently |
+| 🛑 Cancelled | Orchestrator explicitly sends cancellation via SendMessage |
+
+**Prohibited exits:**
+- After step 2 (implement) without submitting evidence → **protocol violation**
+- With `[pending_tag]` active without fixing → **protocol violation**
+- After `[agree_tag]` without WIP commit → **protocol violation**
 
 ## Correction Rounds (via SendMessage)
 
@@ -132,7 +165,16 @@ Corrections are expected to be scoped — fix only what was rejected. Do NOT exp
 Bundled at `${CLAUDE_PLUGIN_ROOT}/scripts/`:
 
 ```bash
-# Code pattern scan (0 tokens, replaces expensive grep)
+# Unified tool runner — all 9 deterministic tools via CLI
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" <tool> --param value
+
+# Examples:
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" code_map --path src/
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" dependency_graph --path src/
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" audit_scan --pattern type-safety
+node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" coverage_map --path src/
+
+# Code pattern scan (standalone, same as audit_scan tool)
 node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" all
 node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" type-safety
 node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" hardcoded
@@ -140,6 +182,8 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" hardcoded
 # Add locale key to ko + en at once
 node "${CLAUDE_PLUGIN_ROOT}/scripts/add-locale-key.mjs" "key" "ko_value" "en_value"
 ```
+
+For full tool documentation, invoke `/consensus-loop:tools`.
 
 ## Anti-Patterns
 
@@ -149,3 +193,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/add-locale-key.mjs" "key" "ko_value" "en_val
 - Do NOT skip FE verification when FE files are changed
 - Do NOT retry the same failing approach — rethink the approach
 - Do NOT use `git add .` or `git add -A` — add specific files only
+- **Do NOT exit after implementing without submitting evidence** — implementation without audit is incomplete work
+- **Do NOT exit with `[pending_tag]` active** — rejection requires correction, not abandonment
+- **Do NOT exit after `[agree_tag]` without WIP commit** — approved work must be persisted
+- **Do NOT exit without outputting the Completion Gate checklist** — silent exits hide failures
