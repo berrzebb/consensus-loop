@@ -1,0 +1,132 @@
+{
+  "plugin": {
+    "locale": "ko",
+    "audit_script": "audit.mjs",
+    "audit_prompt": "templates/audit-prompt.md",
+    "respond_script": "respond.mjs",
+    "ack_file": "ack.timestamp",
+    "session_file": "session.id",
+    "debug_log": "debug.log",
+    "fix_prompt": "templates/fix-prompt.md",
+    "respond_file": "gpt.md",
+    "retro_script": "retrospective.mjs",
+    "retro_prompt": "templates/retro-prompt.md",
+    "handoff_file": ".claude/session-handoff.md",
+
+    "_hooks_enabled_readme": "Toggle individual hook behaviors. All default to true if omitted.",
+    "hooks_enabled": {
+      "audit": true,
+      "session_gate": true,
+      "quality_rules": true,
+      "pre_compact": true
+    }
+  },
+  "consensus": {
+    "watch_file": "docs/feedback/claude.md",
+    "trigger_tag": "[REVIEW_NEEDED]",
+    "agree_tag": "[APPROVED]",
+    "pending_tag": "[CHANGES_REQUESTED]",
+    "planning_dirs": [
+      "docs/ko/design/improved"
+    ],
+    "sections": {
+      "audit_scope":         "Audit Scope",
+      "final_verdict":       "Final Verdict",
+      "agreed_anchor":       "Agreed",
+      "reset_criteria":      "Reset Criteria",
+      "reject_codes":        "Rejection Codes",
+      "additional_tasks":    "Additional Tasks",
+      "next_task":           "Next Task",
+      "promotion_target":    "Current Promotion Target",
+      "deprecated_protocol": "Deprecated Protocol",
+      "changed_files":       "Changed Files"
+    },
+    "doc_patterns": {
+      "empty_markers":        "해당 없음|없음|none|n\\/a",
+      "completion_suffix":    ":\\s*(완료|done)\\s*\\/?",
+      "design_prefix":        "설계|Design",
+      "pending_focus_fallback": "current pending items",
+      "no_next_task":         "no next task registered",
+      "none_item":            "- none",
+      "reset_criteria_text":  "The scope must confirm that `{focus}` corrections and related lint/test re-passes are verified before promoting to `{agree_tag}`."
+    }
+  },
+  "quality_rules": {
+    "_readme": "Language-aware quality rules. Each preset is selected by 'detect' file presence. 'precedence' controls evaluation order for monorepos. 'overrides' in project config.json can replace or extend these.",
+    "presets": [
+      {
+        "detect": "tsconfig.json",
+        "root": ".",
+        "label": "typescript",
+        "precedence": 10,
+        "checks": [
+          { "id": "CQ-1", "label": "eslint", "command": "npx eslint --no-error-on-unmatched-pattern \"{file}\"", "per_file": true },
+          { "id": "CQ-2", "label": "tsc", "command": "npx tsc --noEmit", "per_file": false },
+          { "id": "T-1", "label": "test", "command": "npm test -- --run", "per_file": false }
+        ],
+        "artifacts": ["node_modules"],
+        "result_normalization": "exit_code"
+      },
+      {
+        "detect": "pyproject.toml",
+        "root": ".",
+        "label": "python",
+        "precedence": 10,
+        "checks": [
+          { "id": "CQ-1", "label": "ruff", "command": "ruff check \"{file}\"", "per_file": true, "optional": true },
+          { "id": "T-1", "label": "pytest", "command": "python -m pytest -x -q", "per_file": false }
+        ],
+        "artifacts": ["__pycache__", ".pytest_cache"],
+        "result_normalization": "exit_code"
+      },
+      {
+        "detect": "setup.py",
+        "root": ".",
+        "label": "python-legacy",
+        "precedence": 20,
+        "checks": [
+          { "id": "T-1", "label": "pytest", "command": "python -m pytest -x -q", "per_file": false }
+        ],
+        "artifacts": ["__pycache__"],
+        "result_normalization": "exit_code"
+      },
+      {
+        "detect": "Cargo.toml",
+        "root": ".",
+        "label": "rust",
+        "precedence": 10,
+        "checks": [
+          { "id": "CQ-1", "label": "cargo-check", "command": "cargo check", "per_file": false },
+          { "id": "CQ-2", "label": "clippy", "command": "cargo clippy -- -D warnings", "per_file": false },
+          { "id": "T-1", "label": "cargo-test", "command": "cargo test", "per_file": false }
+        ],
+        "artifacts": ["target"],
+        "result_normalization": "exit_code"
+      },
+      {
+        "detect": "go.mod",
+        "root": ".",
+        "label": "go",
+        "precedence": 10,
+        "checks": [
+          { "id": "CQ-1", "label": "go-vet", "command": "go vet ./...", "per_file": false },
+          { "id": "T-1", "label": "go-test", "command": "go test ./...", "per_file": false }
+        ],
+        "artifacts": [],
+        "result_normalization": "exit_code"
+      },
+      {
+        "detect": "package.json",
+        "root": ".",
+        "label": "node-fallback",
+        "precedence": 50,
+        "checks": [
+          { "id": "DEP-1", "label": "npm-audit", "command": "npm audit --audit-level=high", "per_file": false, "optional": true }
+        ],
+        "artifacts": ["node_modules"],
+        "result_normalization": "exit_code"
+      }
+    ],
+    "overrides": []
+  }
+}

@@ -42,7 +42,7 @@ const planningDirs = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROO
 const promotionDocPaths = planningDirs.map((d) => resolve(d, "feedback-promotion.md"));
 
 function usage() {
-  console.log(`Usage: node .claude/hooks/consensus-loop/audit.mjs [options]
+  console.log(`Usage: node .claude/quorum audit [options]
 
 Options:
   --scope <text>     Override audit scope shown to Codex
@@ -65,12 +65,12 @@ Environment:
   CODEX_BIN          Override the Codex executable path
 
 Examples:
-  node .claude/hooks/consensus-loop/audit.mjs
-  node .claude/hooks/consensus-loop/audit.mjs --scope "Observability Layer / Bundle O3"
-  node .claude/hooks/consensus-loop/audit.mjs --model gpt-5.4
-  node .claude/hooks/consensus-loop/audit.mjs --resume-last
-  node .claude/hooks/consensus-loop/audit.mjs --reset-session
-  node .claude/hooks/consensus-loop/audit.mjs --auto-fix
+  node .claude/quorum audit
+  node .claude/quorum audit --scope "Observability Layer / Bundle O3"
+  node .claude/quorum audit --model gpt-5.4
+  node .claude/quorum audit --resume-last
+  node .claude/quorum audit --reset-session
+  node .claude/quorum audit --auto-fix
 `);
 }
 
@@ -512,12 +512,13 @@ function computeChangedFiles(markdown) {
   return `**Diff scope** (\`${diffCmd}\`, ${files.length} files):\n${fileList}`;
 }
 
-function buildPrompt(scopeText, promotionHint, preVerified) {
+function buildPrompt(scopeText, promotionHint, preVerified, diffScope) {
   const template = readFileSync(promptTemplatePath, "utf8");
   const promotionSection = buildPromotionSection(promotionHint);
   return template
     .split("{{SCOPE}}").join(scopeText)
     .split("{{PRE_VERIFIED}}").join(preVerified)
+    .split("{{DIFF_CMD}}").join(diffScope ?? "")
     .split("{{PROMOTION_SECTION}}").join(promotionSection)
     .split("{{CLAUDE_MD_PATH}}").join(claudePath)
     .split("{{GPT_MD_PATH}}").join(gptPath)
@@ -680,6 +681,9 @@ function runRespond(args) {
   }
 
   const respondArgs = [resolve(HOOKS_DIR, "respond.mjs")];
+  if (args.watchFile) {
+    respondArgs.push("--watch-file", args.watchFile);
+  }
   if (args.autoFix) {
     respondArgs.push("--auto-fix");
   }
@@ -738,7 +742,8 @@ async function main() {
   const scopeText = args.scope ?? detectScope(claudeMd);
   const preVerified = runPreVerification(claudeMd);
   const promotionHint = loadPromotionHint();
-  const prompt = buildPrompt(scopeText, promotionHint, preVerified);
+  const diffScope = computeChangedFiles(claudeMd);
+  const prompt = buildPrompt(scopeText, promotionHint, preVerified, diffScope);
   const codexBin = resolveCodexBin();
 
   if (args.dryRun) {

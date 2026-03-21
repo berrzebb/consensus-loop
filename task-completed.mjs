@@ -12,7 +12,7 @@
  *   2 — feedback (task stays in-progress, teammate continues with feedback)
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -46,14 +46,14 @@ let changedFiles = [];
 try {
   // Uncommitted changes
   const uncommitted = execSync("git diff --name-only && git diff --cached --name-only", {
-    cwd: REPO_ROOT, encoding: "utf8",
+    cwd: REPO_ROOT, encoding: "utf8", shell: true,
   }).trim();
 
   // Recent commits (last 5) — covers worktree commit workflow
   let committed = "";
   try {
     committed = execSync("git diff --name-only HEAD~5..HEAD 2>/dev/null", {
-      cwd: REPO_ROOT, encoding: "utf8",
+      cwd: REPO_ROOT, encoding: "utf8", shell: true,
     }).trim();
   } catch { /* shallow repo or <5 commits — skip */ }
 
@@ -68,60 +68,67 @@ if (changedFiles.length === 0) {
   process.exit(0);
 }
 
-// ── Run done-criteria checks ─────────────────────────────────
+// ── Run done-criteria checks (language-aware) ────────────────
 const failures = [];
-const sourceFiles = changedFiles.filter(f => f.match(/\.(ts|tsx|js|jsx|mjs)$/));
 
-// CQ-1: eslint per changed source file
-for (const file of sourceFiles) {
-  const fullPath = resolve(REPO_ROOT, file);
-  if (!existsSync(fullPath)) continue;
-
-  try {
-    execSync(`npx eslint "${file}" --no-warn-ignored`, {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-  } catch (e) {
-    const output = e.stdout?.toString() || e.stderr?.toString() || "";
-    failures.push(`[CQ-1] eslint: ${file}\n${output.slice(0, 200)}`);
-  }
-}
-
-// CQ-2: tsc --noEmit
+// Load quality_rules presets from config
+let presets = [];
 try {
-  execSync("npx tsc --noEmit", {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-    timeout: 30000,
-  });
-} catch (e) {
-  const output = e.stdout?.toString() || e.stderr?.toString() || "";
-  failures.push(`[CQ-2] tsc --noEmit\n${output.slice(0, 300)}`);
-}
+  const configPath = resolve(REPO_ROOT, ".claude", "quorum", "config.json");
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, "utf8"));
+    presets = cfg.quality_rules?.presets ?? [];
+  }
+} catch { /* config read error — fall through to empty presets */ }
 
-// T-1: Run default test command (if package.json exists)
-const pkgPath = resolve(REPO_ROOT, "package.json");
-if (existsSync(pkgPath)) {
-  try {
-    const pkg = JSON.parse(execSync(`cat "${pkgPath}"`, { encoding: "utf8" }));
-    const testCmd = pkg.scripts?.test;
-    if (testCmd) {
-      try {
-        execSync(`npm test -- --run 2>&1`, {
-          cwd: REPO_ROOT,
-          encoding: "utf8",
-          stdio: ["pipe", "pipe", "pipe"],
-          timeout: 60000,
-        });
-      } catch (e) {
-        const output = e.stdout?.toString() || e.stderr?.toString() || "";
-        failures.push(`[T-1] Tests failed\n${output.slice(-300)}`);
+// Find matching presets by detect file presence, sorted by precedence
+const activePresets = presets
+  .filter(p => existsSync(resolve(REPO_ROOT, p.detect)))
+  .sort((a, b) => (a.precedence ?? 50) - (b.precedence ?? 50));
+
+if (activePresets.length > 0) {
+  for (const preset of activePresets) {
+    for (const check of preset.checks ?? []) {
+      if (check.per_file) {
+        // Per-file checks: run for each changed file
+        for (const file of changedFiles) {
+          const fullPath = resolve(REPO_ROOT, file);
+          if (!existsSync(fullPath)) continue;
+          const cmd = check.command.replace("{file}", file);
+          try {
+            execSync(cmd, {
+              cwd: REPO_ROOT,
+              encoding: "utf8",
+              stdio: ["pipe", "pipe", "pipe"],
+              timeout: 30000,
+              shell: true,
+            });
+          } catch (e) {
+            if (check.optional) continue;
+            const output = e.stdout?.toString() || e.stderr?.toString() || "";
+            failures.push(`[${check.id}] ${check.label}: ${file}\n${output.slice(0, 200)}`);
+          }
+        }
+      } else {
+        // Whole-project checks
+        try {
+          execSync(check.command, {
+            cwd: REPO_ROOT,
+            encoding: "utf8",
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: 60000,
+            shell: true,
+          });
+        } catch (e) {
+          if (check.optional) continue;
+          const output = e.stdout?.toString() || e.stderr?.toString() || "";
+          failures.push(`[${check.id}] ${check.label}\n${output.slice(-300)}`);
+        }
       }
     }
-  } catch { /* package.json parse error — skip test */ }
+  }
+} else {
+  console.error("[task-completed] No quality_rules presets matched — skipping CQ checks");
 }
 
 // ── Verdict ──────────────────────────────────────────────────
@@ -137,6 +144,18 @@ if (failures.length > 0) {
   process.stderr.write(feedback);
   process.exit(2); // Exit 2 = feedback, task stays in-progress
 }
+
+// ── Emit task completion to EventStore ──
+try {
+  const bridge = await import("../../core/bridge.mjs");
+  const REPO_ROOT = process.cwd();
+  await bridge.init(REPO_ROOT);
+  bridge.emitEvent("agent.complete", "claude-code", {
+    name: teammateName || taskSubject,
+    task: taskSubject,
+  });
+  bridge.close();
+} catch { /* bridge non-critical */ }
 
 console.error(`[task-completed] All checks passed for: "${taskSubject}"`);
 process.exit(0);
