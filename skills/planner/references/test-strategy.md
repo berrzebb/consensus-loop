@@ -26,21 +26,21 @@ Do NOT write for simple tracks where WB-level test descriptions are sufficient.
 
 | Metric | Target | Current | Method |
 |--------|--------|---------|--------|
-| Statement coverage | ≥ 85% | 62% | `vitest --coverage` |
-| Branch coverage | ≥ 75% | 48% | `vitest --coverage` |
+| Statement coverage | ≥ 85% | 62% | test runner `--coverage` |
+| Branch coverage | ≥ 75% | 48% | test runner `--coverage` |
 | Changed file coverage | 100% files have tests | — | RTM forward matrix |
 
 ## Test Levels
 
 ### Unit Tests
 - **Scope**: Individual functions and classes
-- **Framework**: vitest
-- **Location**: `tests/{module}/*.test.ts`
+- **Framework**: (project test runner — e.g. vitest, pytest, cargo test)
+- **Location**: `tests/{module}/*.test.*`
 - **Naming**: `test_{subject}_{scenario}_{expected}`
 
 ### Integration Tests
 - **Scope**: Cross-module interactions, API endpoints
-- **Framework**: vitest + supertest
+- **Framework**: (project test runner + HTTP client)
 - **Location**: `tests/integration/*.test.ts`
 - **Setup**: Mock server via `createMockServer()` helper
 

@@ -19,10 +19,10 @@ Submit evidence only when ALL items pass.
 
 | # | Criterion | Proof |
 |---|-----------|-------|
-| CQ-1 | Every changed file passes `npx eslint <file>` individually | Per-file eslint output |
-| CQ-2 | `npx tsc --noEmit` passes | Terminal output |
-| CQ-3 | No unused imports/variables in changed files | Covered by CQ-1 |
-| CQ-4 | No `as any`, `@ts-ignore`, `console.log` in new code | Grep result |
+| CQ-1 | Every changed file passes the per-file checks defined in `quality_rules.presets` (from `.claude/quorum/config.json`) | Per-file check output. If no preset matches the project, skip. |
+| CQ-2 | Project-wide checks defined in `quality_rules.presets` pass | Terminal output. Only run checks where `per_file: false`. |
+| CQ-3 | No unused imports/variables in changed files | Covered by CQ-1 or language-specific check |
+| CQ-4 | No unsafe patterns in new code (`as any`, `@ts-ignore`, `type: ignore`, `unsafe` blocks, etc.) | Grep result |
 
 ### Test
 
@@ -30,7 +30,7 @@ Submit evidence only when ALL items pass.
 |---|-----------|-------|
 | T-1 | All test commands in evidence execute and pass | Terminal output (copy-paste, not summary) |
 | T-2 | Every claimed feature has a direct test (not just indirect coverage) | Test file:line reference |
-| T-3 | No existing test regressions in related scope | `npx vitest run <related>` output |
+| T-3 | No existing test regressions in related scope | Test runner output (use the test command from `quality_rules.presets`) |
 | T-4 | Test commands are re-runnable as-is (no glob patterns, no environment assumptions) | Command is copy-pasteable |
 
 ### Functional Verification

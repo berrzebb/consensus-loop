@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* global process, console */
 
-import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, appendFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import { spawnSync } from "node:child_process";
 import { resolveBinary, spawnResolvedAsync } from "./cli-runner.mjs";
@@ -37,12 +37,18 @@ function initPaths(overrideWatchFile) {
   claudePath = overrideWatchFile && existsSync(overrideWatchFile) ? overrideWatchFile : findWatchFile();
   gptPath = claudePath ? resolve(dirname(claudePath), plugin.respond_file ?? "gpt.md") : null;
 }
-const sessionPath = resolve(HOOKS_DIR, plugin.session_file);
+// Session path: per-worktree when --watch-file is in a worktree, else HOOKS_DIR
+function getSessionPath() {
+  return _sessionDir
+    ? resolve(_sessionDir, plugin.session_file)
+    : resolve(HOOKS_DIR, plugin.session_file);
+}
+let _sessionDir = null;
 const planningDirs = (consensus.planning_dirs ?? []).map((d) => resolve(REPO_ROOT, d));
 const promotionDocPaths = planningDirs.map((d) => resolve(d, "feedback-promotion.md"));
 
 function usage() {
-  console.log(`Usage: node .claude/hooks/consensus-loop/audit.mjs [options]
+  console.log(`Usage: node .claude/quorum audit [options]
 
 Options:
   --scope <text>     Override audit scope shown to Codex
@@ -65,12 +71,12 @@ Environment:
   CODEX_BIN          Override the Codex executable path
 
 Examples:
-  node .claude/hooks/consensus-loop/audit.mjs
-  node .claude/hooks/consensus-loop/audit.mjs --scope "Observability Layer / Bundle O3"
-  node .claude/hooks/consensus-loop/audit.mjs --model gpt-5.4
-  node .claude/hooks/consensus-loop/audit.mjs --resume-last
-  node .claude/hooks/consensus-loop/audit.mjs --reset-session
-  node .claude/hooks/consensus-loop/audit.mjs --auto-fix
+  node .claude/quorum audit
+  node .claude/quorum audit --scope "Observability Layer / Bundle O3"
+  node .claude/quorum audit --model gpt-5.4
+  node .claude/quorum audit --resume-last
+  node .claude/quorum audit --reset-session
+  node .claude/quorum audit --auto-fix
 `);
 }
 
@@ -161,30 +167,26 @@ function parseArgs(argv) {
 }
 
 function readSavedSession() {
-  if (!existsSync(sessionPath)) {
-    return null;
-  }
-
+  const sp = getSessionPath();
+  if (!existsSync(sp)) return null;
   try {
-    const stored = JSON.parse(readFileSync(sessionPath, "utf8"));
+    const stored = JSON.parse(readFileSync(sp, "utf8"));
     if (!stored.id) return null;
-    // mtime check removed: CLAUDE.md edits (new evidence) must not destroy the session.
-    // Session resets only when all items reach agree_tag (see deleteSavedSessionId).
     return stored.id;
   } catch {
-    // Parse failure → invalidate
     return null;
   }
 }
 
 function writeSavedSession(sessionId) {
-  writeFileSync(sessionPath, JSON.stringify({ id: sessionId }) + "\n", "utf8");
+  const sp = getSessionPath();
+  mkdirSync(dirname(sp), { recursive: true });
+  writeFileSync(sp, JSON.stringify({ id: sessionId }) + "\n", "utf8");
 }
 
 function deleteSavedSessionId() {
-  if (existsSync(sessionPath)) {
-    rmSync(sessionPath, { force: true });
-  }
+  const sp = getSessionPath();
+  if (existsSync(sp)) rmSync(sp, { force: true });
 }
 
 // extractStatusFromLine → imported from context.mjs
@@ -308,22 +310,23 @@ function checkEslintCoverage(markdown) {
  *   - CQ-2: tsc --noEmit results
  *   - T: test command results (from evidence)
  */
-function runPreVerification(markdown) {
+function runPreVerification(markdown, cwd) {
+  const root = cwd || REPO_ROOT;
   const sections = [];
 
   // 1. Changed files (CC-2)
-  sections.push(computeChangedFiles(markdown));
+  sections.push(computeChangedFiles(markdown, root));
 
   // 2. CQ-2: tsc --noEmit (root + web if exists)
-  sections.push(runTscLocally());
+  sections.push(runTscLocally(root));
 
   // 3. CQ-1: eslint on changed source files
   const changedFiles = extractChangedFilesFromEvidence(markdown);
-  sections.push(runEslintLocally(changedFiles));
+  sections.push(runEslintLocally(changedFiles, root));
 
   // 4. T: re-run test commands from evidence
   const testCmds = extractTestCommands(markdown);
-  sections.push(runTestsLocally(testCmds));
+  sections.push(runTestsLocally(testCmds, root));
 
   return sections.join("\n\n");
 }
@@ -348,16 +351,16 @@ function extractTestCommands(markdown) {
     .split("\n")
     .map(l => l.trim())
     .filter(l => l && !l.startsWith("```") && !l.startsWith("#") && !l.startsWith("//"))
-    .filter(l => l.match(/^(npx|npm|node|vitest|jest|cargo)/));
+    .filter(l => l.match(/^(npx|npm|node|vitest|jest|cargo|python|python3|py|ruff|go |make|pytest)/));
 }
 
 /** Run tsc --noEmit locally and return results. */
-function runTscLocally() {
+function runTscLocally(root) {
   const results = ["### CQ-2: TypeScript Check (pre-verified locally)"];
+  if (!existsSync(resolve(root, "tsconfig.json"))) return results.join("\n");
 
-  // Root tsc
   const rootTsc = spawnSync("npx", ["tsc", "--noEmit"], {
-    cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 60000, shell: true,
+    cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 60000, shell: true,
   });
   results.push(`**Root \`npx tsc --noEmit\`**: ${rootTsc.status === 0 ? "✅ 0 errors" : "❌ FAILED"}`);
   if (rootTsc.status !== 0) {
@@ -365,11 +368,10 @@ function runTscLocally() {
     if (output) results.push("```\n" + output.slice(0, 1000) + "\n```");
   }
 
-  // Web tsc (if web/tsconfig.json exists)
-  const webTsconfig = resolve(REPO_ROOT, "web", "tsconfig.json");
+  const webTsconfig = resolve(root, "web", "tsconfig.json");
   if (existsSync(webTsconfig)) {
     const webTsc = spawnSync("npx", ["tsc", "--noEmit", "-p", "web/tsconfig.json"], {
-      cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 60000, shell: true,
+      cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 60000, shell: true,
     });
     results.push(`**Web \`npx tsc --noEmit -p web/tsconfig.json\`**: ${webTsc.status === 0 ? "✅ 0 errors" : "❌ FAILED"}`);
     if (webTsc.status !== 0) {
@@ -382,7 +384,7 @@ function runTscLocally() {
 }
 
 /** Run eslint on changed source files locally. */
-function runEslintLocally(files) {
+function runEslintLocally(files, root) {
   const sourceFiles = files.filter(f => f.match(/\.(ts|tsx|js|jsx|mjs)$/));
   if (sourceFiles.length === 0) {
     return "### CQ-1: ESLint (pre-verified locally)\nNo source files to lint.";
@@ -392,11 +394,11 @@ function runEslintLocally(files) {
   let allPassed = true;
 
   for (const file of sourceFiles) {
-    const fullPath = resolve(REPO_ROOT, file);
+    const fullPath = resolve(root, file);
     if (!existsSync(fullPath)) continue;
 
     const lint = spawnSync("npx", ["eslint", file, "--no-warn-ignored"], {
-      cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000, shell: true,
+      cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000, shell: true,
     });
     if (lint.status !== 0) {
       allPassed = false;
@@ -413,7 +415,7 @@ function runEslintLocally(files) {
 }
 
 /** Run test commands from evidence locally. */
-function runTestsLocally(cmds) {
+function runTestsLocally(cmds, root) {
   if (cmds.length === 0) {
     return "### T-1: Tests (pre-verified locally)\nNo test commands found in evidence.";
   }
@@ -421,12 +423,11 @@ function runTestsLocally(cmds) {
   const results = ["### T-1: Tests (pre-verified locally)"];
 
   for (const cmd of cmds) {
-    // Skip lint/tsc commands (already covered by CQ)
     if (cmd.includes("eslint") || cmd.includes("tsc")) continue;
 
     const parts = cmd.split(/\s+/);
     const child = spawnSync(parts[0], parts.slice(1), {
-      cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+      cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
       timeout: 120000, shell: true,
     });
 
@@ -447,7 +448,8 @@ function runTestsLocally(cmds) {
 }
 
 /** Compute changed file list for CC-2. */
-function computeChangedFiles(markdown) {
+function computeChangedFiles(markdown, root) {
+  const cwd = root || REPO_ROOT;
   let diffCmd = "git diff --name-only";
 
   // 1. Extract from evidence — look for explicit diff basis
@@ -457,22 +459,20 @@ function computeChangedFiles(markdown) {
     diffCmd = `git diff --name-only ${match[1]}`;
   } else {
     // 2. Compute from git history
-    // Try merge-base first (works on feature branches), fall back to log-based (works on main)
     let useMergeBase = false;
     try {
       const mainBranch = (() => {
-        const r = spawnSync("git", ["rev-parse", "--verify", "main"], { cwd: REPO_ROOT, stdio: "pipe" });
+        const r = spawnSync("git", ["rev-parse", "--verify", "main"], { cwd, stdio: "pipe" });
         return r.status === 0 ? "main" : "master";
       })();
       const mergeBase = spawnSync("git", ["merge-base", "HEAD", mainBranch], {
-        cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+        cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
       });
       if (mergeBase.status === 0 && mergeBase.stdout.trim()) {
         const base = mergeBase.stdout.trim().slice(0, 10);
         const testCmd = `git diff --name-only ${base}..HEAD`;
-        // Verify merge-base actually produces files (on main branch, merge-base = HEAD → 0 files)
         const testResult = spawnSync("git", ["diff", "--name-only", `${base}..HEAD`], {
-          cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+          cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
         });
         const testFiles = (testResult.stdout || "").trim().split("\n").filter(Boolean);
         if (testFiles.length > 0) {
@@ -482,11 +482,10 @@ function computeChangedFiles(markdown) {
       }
     } catch { /* merge-base failed */ }
 
-    // Log-based fallback — always works (main or feature branch)
     if (!useMergeBase) {
       try {
         const log = spawnSync("git", ["log", "--oneline", "-10", "--format=%H"], {
-          cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+          cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
         });
         if (log.status === 0) {
           const hashes = log.stdout.trim().split("\n").filter(Boolean);
@@ -499,9 +498,8 @@ function computeChangedFiles(markdown) {
     }
   }
 
-  // Execute the diff command and return the file list
   const result = spawnSync("git", diffCmd.replace("git ", "").split(" "), {
-    cwd: REPO_ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
+    cwd, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
   });
 
   const files = (result.status === 0 ? result.stdout : "").trim().split("\n").filter(Boolean);
@@ -512,12 +510,13 @@ function computeChangedFiles(markdown) {
   return `**Diff scope** (\`${diffCmd}\`, ${files.length} files):\n${fileList}`;
 }
 
-function buildPrompt(scopeText, promotionHint, preVerified) {
+function buildPrompt(scopeText, promotionHint, preVerified, diffScope) {
   const template = readFileSync(promptTemplatePath, "utf8");
   const promotionSection = buildPromotionSection(promotionHint);
   return template
     .split("{{SCOPE}}").join(scopeText)
     .split("{{PRE_VERIFIED}}").join(preVerified)
+    .split("{{DIFF_CMD}}").join(diffScope ?? "")
     .split("{{PROMOTION_SECTION}}").join(promotionSection)
     .split("{{CLAUDE_MD_PATH}}").join(claudePath)
     .split("{{GPT_MD_PATH}}").join(gptPath)
@@ -527,7 +526,7 @@ function buildPrompt(scopeText, promotionHint, preVerified) {
     .split("{{DESIGN_DOCS_DIR}}").join(cfg.consensus.design_docs_dir ?? "docs/ko/design/**")
     .split("{{LOCALE}}").join(safeLocale)
     .split("{{REFERENCES_DIR}}").join(
-      relative(REPO_ROOT, resolve(HOOKS_DIR, "templates", "references", safeLocale)).replace(/\\/g, "/"),
+      resolve(HOOKS_DIR, "templates", "references", safeLocale).replace(/\\/g, "/"),
     );
 }
 
@@ -567,7 +566,7 @@ function determineResumeTarget(args) {
   return null;
 }
 
-function buildCodexArgs(args, resumeTarget) {
+function buildCodexArgs(args, resumeTarget, cwd) {
   const wantsFullAccess = args.sandbox === "danger-full-access";
 
   if (resumeTarget) {
@@ -594,7 +593,7 @@ function buildCodexArgs(args, resumeTarget) {
   const base = [
     "exec",
     "-C",
-    REPO_ROOT,
+    cwd || REPO_ROOT,
   ];
 
   if (wantsFullAccess) {
@@ -680,6 +679,9 @@ function runRespond(args) {
   }
 
   const respondArgs = [resolve(HOOKS_DIR, "respond.mjs")];
+  if (args.watchFile) {
+    respondArgs.push("--watch-file", args.watchFile);
+  }
   if (args.autoFix) {
     respondArgs.push("--auto-fix");
   }
@@ -687,8 +689,9 @@ function runRespond(args) {
     respondArgs.push("--no-sync-next");
   }
 
+  const respondCwd = args.watchFile ? deriveAuditCwd(args.watchFile) : REPO_ROOT;
   const result = spawnSync(process.execPath, respondArgs, {
-    cwd: REPO_ROOT,
+    cwd: respondCwd,
     stdio: "inherit",
     encoding: "utf8",
   });
@@ -697,14 +700,30 @@ function runRespond(args) {
     throw result.error;
   }
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    // Do NOT process.exit() — it bypasses .finally() lock cleanup
+    console.error(`[audit] respond.mjs exited with code ${result.status}`);
+    process.exitCode = result.status ?? 1;
   }
+}
+
+/** Derive worktree root from watch_file path. If watch_file is inside a worktree, return that root. */
+function deriveAuditCwd(watchFile) {
+  if (!watchFile) return REPO_ROOT;
+  // Pattern: .../.claude/worktrees/<agent>/docs/feedback/claude.md
+  const worktreeMatch = watchFile.replace(/\\/g, "/").match(/(.+\/.claude\/worktrees\/[^/]+)\//);
+  if (worktreeMatch) return worktreeMatch[1];
+  return REPO_ROOT;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
   initPaths(args.watchFile);
+
+  // Resolve audit CWD: if watch_file is in a worktree, Codex must run there
+  const auditCwd = deriveAuditCwd(args.watchFile);
+  // Session files go to the worktree too (prevents cross-worktree state corruption)
+  if (auditCwd !== REPO_ROOT) _sessionDir = resolve(auditCwd, ".claude");
 
   if (args.resetSession) {
     deleteSavedSessionId();
@@ -736,9 +755,21 @@ async function main() {
   }
 
   const scopeText = args.scope ?? detectScope(claudeMd);
-  const preVerified = runPreVerification(claudeMd);
+  const preVerified = runPreVerification(claudeMd, auditCwd);
   const promotionHint = loadPromotionHint();
-  const prompt = buildPrompt(scopeText, promotionHint, preVerified);
+  const diffScope = computeChangedFiles(claudeMd, auditCwd);
+  let prompt = buildPrompt(scopeText, promotionHint, preVerified, diffScope);
+
+  // Guard: truncate prompt if too large — prevents Codex STATUS_HEAP_CORRUPTION crash
+  const MAX_PROMPT_CHARS = 80_000;
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    console.error(`[audit] Prompt too large (${prompt.length} chars) — truncating to ${MAX_PROMPT_CHARS}`);
+    // Keep the audit protocol header + truncated evidence
+    const header = prompt.slice(0, 20_000);
+    const tail = prompt.slice(-10_000);
+    prompt = header + "\n\n⚠️ TRUNCATED: evidence was too large. Review the watch_file directly for full content.\n\n" + tail;
+  }
+
   const codexBin = resolveCodexBin();
 
   if (args.dryRun) {
@@ -758,13 +789,13 @@ async function main() {
     console.log(t("audit.session.starting"));
   }
 
-  const codexArgs = buildCodexArgs(args, resumeTarget);
+  const codexArgs = buildCodexArgs(args, resumeTarget, auditCwd);
   if (args.debugBin) {
     console.log(t("audit.debug_bin", { bin: codexBin }));
   }
 
   const child = spawnResolvedAsync(codexBin, codexArgs, {
-    cwd: REPO_ROOT,
+    cwd: auditCwd,
     stdio: ["pipe", "pipe", "pipe"],
   });
 
@@ -775,7 +806,32 @@ async function main() {
   const { threadId, exitCode } = await streamCodexOutput(child, args.json);
 
   if (exitCode !== 0) {
-    process.exit(exitCode ?? 1);
+    // Do NOT call process.exit() here — it skips .finally() lock cleanup.
+    // Instead, write an infra_failure verdict so the worker can proceed.
+    const failureVerdict = [
+      `## [INFRA_FAILURE]`,
+      ``,
+      `### Audit Scope`,
+      ``,
+      `infra_failure: auditor exited with code ${exitCode}. No external review performed.`,
+      ``,
+      `### Final Verdict`,
+      ``,
+      `- Status: infra_failure (auditor unreachable)`,
+      `- Action: worker unblocked — NOT approved. Requires manual review or retry.`,
+      ``,
+      `### Execution Metadata`,
+      ``,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| execution_mode | degraded_infra_failure |`,
+      `| audit_status | unreachable |`,
+      `| merge_status | provisional |`,
+      `| baseline_eligible | false |`,
+      ``,
+    ].join("\n");
+    writeFileSync(gptPath, failureVerdict, "utf8");
+    console.error(`[audit] Codex exited with code ${exitCode} — wrote infra_failure verdict to ${gptPath}`);
   }
 
   if (existsSync(gptPath)) {
@@ -797,7 +853,10 @@ async function main() {
   stampAuditCompleted(gptPath);
 }
 
-const auditLockPath = resolve(REPO_ROOT, ".claude", "audit.lock");
+// Lock is per-worktree: if --watch-file is in a worktree, lock goes there too.
+const watchFileArg = process.argv.find((a, i) => process.argv[i - 1] === "--watch-file");
+const auditLockRoot = watchFileArg ? deriveAuditCwd(watchFileArg) : REPO_ROOT;
+const auditLockPath = resolve(auditLockRoot, ".claude", "audit.lock");
 main()
   .catch((error) => {
     const message = error instanceof Error ? error.message : String(error);

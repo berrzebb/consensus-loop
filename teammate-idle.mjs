@@ -12,7 +12,7 @@
  *   2 — feedback (teammate continues working with the feedback message)
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -49,6 +49,7 @@ try {
   const diff = execSync("git diff --name-only && git diff --cached --name-only", {
     cwd: REPO_ROOT,
     encoding: "utf8",
+    shell: true,
   }).trim();
   if (diff) {
     changedFiles = [...new Set(diff.split("\n").filter(Boolean))];
@@ -60,38 +61,62 @@ if (changedFiles.length === 0) {
   process.exit(0);
 }
 
-// ── Run quality checks ───────────────────────────────────────
+// ── Run quality checks (language-aware) ──────────────────────
 const failures = [];
 
-// CQ-1: eslint per changed file
-for (const file of changedFiles) {
-  if (!file.match(/\.(ts|tsx|js|jsx|mjs)$/)) continue;
-  const fullPath = resolve(REPO_ROOT, file);
-  if (!existsSync(fullPath)) continue;
-
-  try {
-    execSync(`npx eslint "${file}" --no-warn-ignored`, {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-  } catch (e) {
-    const stderr = e.stderr?.toString() || e.stdout?.toString() || "";
-    failures.push(`[CQ-1] eslint failed: ${file}\n${stderr.slice(0, 200)}`);
-  }
-}
-
-// CQ-2: tsc --noEmit
+// Load quality_rules presets from config
+let presets = [];
 try {
-  execSync("npx tsc --noEmit", {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-    timeout: 30000,
-  });
-} catch (e) {
-  const stderr = e.stderr?.toString() || e.stdout?.toString() || "";
-  failures.push(`[CQ-2] tsc --noEmit failed\n${stderr.slice(0, 300)}`);
+  const configPath = resolve(REPO_ROOT, ".claude", "quorum", "config.json");
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, "utf8"));
+    presets = cfg.quality_rules?.presets ?? [];
+  }
+} catch { /* config read error */ }
+
+const activePresets = presets
+  .filter(p => existsSync(resolve(REPO_ROOT, p.detect)))
+  .sort((a, b) => (a.precedence ?? 50) - (b.precedence ?? 50));
+
+if (activePresets.length > 0) {
+  for (const preset of activePresets) {
+    for (const check of preset.checks ?? []) {
+      if (check.per_file) {
+        for (const file of changedFiles) {
+          const fullPath = resolve(REPO_ROOT, file);
+          if (!existsSync(fullPath)) continue;
+          const cmd = check.command.replace("{file}", file);
+          try {
+            execSync(cmd, {
+              cwd: REPO_ROOT,
+              encoding: "utf8",
+              stdio: ["pipe", "pipe", "pipe"],
+              timeout: 30000,
+              shell: true,
+            });
+          } catch (e) {
+            if (check.optional) continue;
+            const output = e.stdout?.toString() || e.stderr?.toString() || "";
+            failures.push(`[${check.id}] ${check.label}: ${file}\n${output.slice(0, 200)}`);
+          }
+        }
+      } else {
+        try {
+          execSync(check.command, {
+            cwd: REPO_ROOT,
+            encoding: "utf8",
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: 60000,
+            shell: true,
+          });
+        } catch (e) {
+          if (check.optional) continue;
+          const output = e.stdout?.toString() || e.stderr?.toString() || "";
+          failures.push(`[${check.id}] ${check.label}\n${output.slice(-300)}`);
+        }
+      }
+    }
+  }
 }
 
 // ── Verdict ──────────────────────────────────────────────────

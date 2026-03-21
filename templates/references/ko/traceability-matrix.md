@@ -25,12 +25,10 @@
 ```markdown
 # 순방향 RTM: [track-name]
 
-| Req ID | Description | Track | Design Ref | File | Exists | Impl | Test Case | Test Result | Connected | Status |
-|--------|-------------|-------|------------|------|--------|------|-----------|-------------|-----------|--------|
-| EV-1 | EvalCase contract | evaluation-pipeline | EV/README | src/evals/types.ts | ❌ | — | — | — | EV-2:runner.ts | open |
-| EV-1 | fixture loader | evaluation-pipeline | EV/README | src/evals/loaders.ts | ❌ | — | — | — | EV-2:runner.ts | open |
-| EV-1 | loader contract test | evaluation-pipeline | EV/README | tests/evals/loaders.test.ts | ❌ | — | self | — | — | open |
-| EV-2 | local runner | evaluation-pipeline | EV/README | src/evals/runner.ts | ❌ | — | — | — | EG-5:regression | open |
+| Req ID | Description | Track | Design Ref | File | Exists | Impl | Test Case | Test Result | Connected | Invariant | Inv Test | Status |
+|--------|-------------|-------|------------|------|--------|------|-----------|-------------|-----------|-----------|----------|--------|
+| EV-1 | EvalCase contract | evaluation-pipeline | EV/README | src/evals/types.ts | ❌ | — | — | — | EV-2:runner.ts | — | — | open |
+| FR-17 | hold once per turn | ui | UI/README | ui/panels.py | ✅ | ✅ | tests/test_panels.py | ✓ | — | hold 1회 제한 | ❌ 존재성만 | invariant-gap |
 ```
 
 ### 컬럼 정의
@@ -47,8 +45,11 @@
 | **Test Case** | 스카우트 → 구현자 | 테스트 파일:라인, `self`=자기 자신이 테스트, — 부재 |
 | **Test Result** | 구현자 | ✓ pass / ✗ fail / — pending |
 | **Connected** | 스카우트 | 하류 소비자 `Req ID:file` (import 추적) |
-| **Coverage** | coverage_map 도구 | vitest 커버리지 JSON에서 stmt% / br% / fn% |
-| **Status** | 전체 | open → wip → fixed → verified |
+| **Coverage** | coverage_map 도구 | 테스트 커버리지 JSON에서 stmt% / br% / fn% |
+| **Invariant** | test-strategy.md | 이 행에 해당하는 핵심 불변조건. `—` = 해당 없음 |
+| **Inv Test** | 스카우트 → 감사자 | ✅ semantic assertion 존재 / ⚠️ 존재성만 / ❌ 없음 / — 해당 없음 |
+| **Runtime** | 스카우트 → 감사자 | ✅ 런타임 경로에서 소비됨 / ⚠️ 인스턴스화만 / ❌ 미연결 / — 해당 없음 |
+| **Status** | 전체 | open → wip → fixed → verified / invariant-gap / **integration-gap** (구현 존재, 런타임 미연결) |
 
 ---
 

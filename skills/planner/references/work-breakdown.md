@@ -41,9 +41,11 @@ The work breakdown decomposes a track into **implementable work packages**. Each
 - **Tests**:
   - Unit: `tests/path/file.test.ts` — what to test
   - Integration: `tests/path/integration.test.ts` — what to verify
+- **Integration owner**: (for convergence points only) `true` — this WB is responsible for wiring all upstream producers into the runtime path. The implementer must verify that every dependency's public API is actually called, not just imported.
 - **Done**:
   - Verifiable exit condition (derived from FR acceptance criteria)
-  - Example: "`npx vitest run tests/path/file.test.ts` passes with 3+ test cases"
+  - If `integration_owner: true`: must also pass integration invariants (Runtime Entry Closure, Consumer Exists, Persistence Applied)
+  - Example: "`<test runner> tests/path/file.test.*` passes with 3+ test cases"
 ```
 
 ## Writing Principles

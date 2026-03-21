@@ -51,7 +51,7 @@ try {
   syncHandoffToMemory(REPO_ROOT, handoffFile, { locale });
 } catch { /* non-fatal — writeFileSync failure must not crash the hook */ }
 
-// 2. consensus-loop repo: auto-commit if changes exist
+// 2. quorum repo: auto-commit if changes exist
 const clDir = __dirname;
 if (existsSync(resolve(clDir, ".git"))) {
   const status = git(["diff", "--name-only"], clDir);
@@ -81,3 +81,13 @@ if (staged) {
   const diff = git(["diff", "--cached", "--stat"]) || "";
   git(["commit", "-m", `chore: auto-commit session artifacts\n\n${diff}\n\nCo-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>`, "--no-verify"]);
 }
+
+// ── Auto-update RTM statuses on session end ──
+try {
+  const { updateAllRtms } = await import("../../core/rtm-updater.mjs");
+  const results = updateAllRtms(REPO_ROOT);
+  if (results.length > 0) {
+    const total = results.reduce((s, r) => s + r.updated, 0);
+    console.error(`[quorum] RTM auto-updated: ${total} row(s)`);
+  }
+} catch (e) { console.error(`[quorum] RTM update warning: ${e.message}`); }

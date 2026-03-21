@@ -65,16 +65,24 @@ function candidatePaths(command) {
   const exts = getWindowsExtensions();
   const results = [];
 
+  // On Windows: PATHEXT extensions first, extensionless last (fallback only).
+  // This prevents POSIX shell scripts (no extension) from being picked over
+  // .cmd/.exe wrappers, which would invoke Git Bash (msys-2.0.dll) and crash.
+  const withExt = [];
+  const withoutExt = [];
+
   for (const base of directBases) {
     if (!ext) {
       for (const suffix of exts) {
-        results.push(`${base}${suffix}`);
+        withExt.push(`${base}${suffix}`);
       }
+      withoutExt.push(base);
+    } else {
+      withExt.push(base);
     }
-    results.push(base);
   }
 
-  return [...new Set(results)];
+  return [...new Set([...withExt, ...withoutExt])];
 }
 
 export function resolveBinary(command, envVarName) {
@@ -88,6 +96,10 @@ export function resolveBinary(command, envVarName) {
 
   for (const candidate of candidatePaths(command)) {
     if (existsSync(candidate)) {
+      // Warn if falling back to extensionless file on Windows (potential POSIX script)
+      if (process.platform === "win32" && !extname(candidate)) {
+        console.error(`[cli-runner] Warning: resolved to extensionless file ${candidate} — may be a POSIX script. Prefer .cmd/.exe wrapper.`);
+      }
       return candidate;
     }
   }

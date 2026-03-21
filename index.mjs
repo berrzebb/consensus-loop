@@ -16,7 +16,8 @@ import { spawnSync, spawn, execFileSync } from "node:child_process";
 import {
   HOOKS_DIR, REPO_ROOT, cfg, plugin, consensus as c,
   findWatchFile, findRespondFile, t, isHookEnabled, configMissing,
-} from "./context.mjs";
+} from "../../core/context.mjs";
+import * as bridge from "../../core/bridge.mjs";
 
 const debugLog = resolve(HOOKS_DIR, plugin.debug_log ?? "debug.log");
 const ackFile  = resolve(HOOKS_DIR, plugin.ack_file ?? "ack.timestamp");
@@ -145,8 +146,13 @@ function run_audit(watchFilePath) {
     return;
   }
 
-  // 중복 실행 방지: 락 파일은 worktree 로컬 (.claude/)에 생성
-  const lockPath = resolve(REPO_ROOT, ".claude", "audit.lock");
+  // Derive lock root: if watchFilePath is in a worktree, lock goes there (per-worktree isolation)
+  let lockRoot = REPO_ROOT;
+  if (watchFilePath) {
+    const wMatch = watchFilePath.replace(/\\/g, "/").match(/(.+\/.claude\/worktrees\/[^/]+)\//);
+    if (wMatch) lockRoot = wMatch[1];
+  }
+  const lockPath = resolve(lockRoot, ".claude", "audit.lock");
   const LOCK_TTL_MS = 30 * 60 * 1000; // 30분 — PID 재활용 대비 최대 유효 시간
   if (existsSync(lockPath)) {
     try {
@@ -176,7 +182,7 @@ function run_audit(watchFilePath) {
   }
 
   // 백그라운드 프로세스로 감사 실행 — 훅 즉시 반환
-  const logPath = resolve(REPO_ROOT, ".claude", "audit-bg.log");
+  const logPath = resolve(lockRoot, ".claude", "audit-bg.log");
   const logFd = openSync(logPath, "w");
 
   let child;
@@ -244,16 +250,41 @@ function check_pending_response() {
 function run_quality_checks(filePath) {
   const normalized = filePath.replace(/\\/g, "/");
   const filename   = filePath.split(/[\\/]/).pop() ?? "";
+  if (normalized.includes("/node_modules/")) return;
 
-  for (const rule of cfg.quality_rules ?? []) {
+  // Support both legacy array format and new preset object format
+  const qr = cfg.quality_rules;
+  const rules = Array.isArray(qr) ? qr : [];
+
+  // If preset format: resolve active presets by detect file presence
+  if (qr && !Array.isArray(qr) && Array.isArray(qr.presets)) {
+    const activePresets = qr.presets.filter(p => existsSync(resolve(REPO_ROOT, p.detect)));
+    for (const preset of activePresets) {
+      for (const check of preset.checks ?? []) {
+        if (check.per_file) {
+          const envRef = process.platform === "win32" ? "%HOOK_TARGET_FILE%" : "$HOOK_TARGET_FILE";
+          const cmd = check.command.replace("{file}", envRef);
+          const result = spawnSync(cmd, {
+            cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: true,
+            env: { ...process.env, HOOK_TARGET_FILE: filePath },
+          });
+          const output = ((result.stdout || "") + (result.stderr || "")).trim();
+          if (result.status !== 0 && output && !check.optional) {
+            process.stdout.write(t("index.check.error", { label: check.label, file: filename, output }));
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // Legacy array format
+  for (const rule of rules) {
     const m = rule.match;
     if (m.extension && !normalized.endsWith(m.extension)) continue;
     if (m.path_contains && !m.path_contains.some((p) => normalized.includes(p))) continue;
     if (m.filenames && !m.filenames.includes(filename)) continue;
-    if (normalized.includes("/node_modules/")) continue;
 
-    // Cross-platform: use platform-appropriate env var syntax for shell expansion.
-    // $VAR on Unix, %VAR% on Windows cmd.exe.
     const envRef = process.platform === "win32" ? "%HOOK_TARGET_FILE%" : "$HOOK_TARGET_FILE";
     const cmd = rule.command.replace("{file}", envRef);
     const result = spawnSync(cmd, {
@@ -277,7 +308,7 @@ function is_planning_file(normalized) {
 async function main() {
   log("Hook triggered");
   if (configMissing) {
-    process.stdout.write("[consensus-loop] config.json not found. Run a new session to trigger auto-setup, or see README.md for manual configuration.");
+    process.stdout.write("[quorum] config.json not found. Run a new session to trigger auto-setup, or see README.md for manual configuration.");
     return;
   }
   if (process.env.FEEDBACK_LOOP_ACTIVE === "1") { log("EXIT: reentrant"); return; }
@@ -320,9 +351,14 @@ async function main() {
     const content = readFileSync(watchPath, "utf8");
     if (!has_trigger(content)) { log("EXIT: no trigger_tag"); return; }
 
-    // 디바운스: 연속 Edit 시 마지막 Edit만 감사 트리거
+    // Derive worktree root for debounce isolation
+    let debounceRoot = REPO_ROOT;
+    const wm = watchPath.replace(/\\/g, "/").match(/(.+\/.claude\/worktrees\/[^/]+)\//);
+    if (wm) debounceRoot = wm[1];
+
+    // 디바운스: 연속 Edit 시 마지막 Edit만 감사 트리거 (per-worktree)
     const DEBOUNCE_MS = 10_000;
-    const debouncePath = resolve(REPO_ROOT, ".claude", "audit-debounce.ts");
+    const debouncePath = resolve(debounceRoot, ".claude", "audit-debounce.ts");
     const now = Date.now();
     writeFileSync(debouncePath, String(now), "utf8");
     log(`DEBOUNCE: scheduled at ${now}, waiting ${DEBOUNCE_MS}ms`);
@@ -361,7 +397,64 @@ async function main() {
       log(`QUICK_AUDIT: ${quickAuditWarnings.length} warnings`);
     }
 
+    // ── Bridge: evaluate trigger + emit events ──
+    const bridgeReady = await bridge.init(REPO_ROOT);
+    if (bridgeReady) {
+      // Count changed files from evidence
+      const changedFileSection = freshContent.match(/### Changed Files[\s\S]*?(?=###|$)/)?.[0] ?? "";
+      const changedFileCount = (changedFileSection.match(/^- `/gm) ?? []).length;
+
+      // Check prior rejections
+      const priorRejections = bridge.queryEvents({ eventType: "audit.verdict" })
+        .filter((e) => e.payload.verdict === "changes_requested").length;
+
+      const triggerResult = bridge.evaluateTrigger({
+        changedFiles: changedFileCount || 1,
+        securitySensitive: /auth|token|secret|crypt/i.test(changedFileSection),
+        priorRejections,
+        apiSurfaceChanged: /api|endpoint|route/i.test(changedFileSection),
+        crossLayerChange: changedFileSection.includes("src/") && changedFileSection.includes("tests/"),
+        isRevert: /revert|rollback/i.test(freshContent),
+      });
+
+      if (triggerResult) {
+        log(`TRIGGER: mode=${triggerResult.mode} tier=${triggerResult.tier} score=${triggerResult.score.toFixed(2)}`);
+        bridge.emitEvent("audit.submit", "claude-code", {
+          file: watchPath,
+          tier: triggerResult.tier,
+          mode: triggerResult.mode,
+          score: triggerResult.score,
+          reasons: triggerResult.reasons,
+        }, { sessionId });
+
+        // T1 skip: no audit needed — unless minimum_tier overrides
+        const minTier = cfg.experiment?.minimum_tier ?? 0;
+        if (triggerResult.mode === "skip" && minTier < 2) {
+          log("SKIP: T1 micro change — no audit needed");
+          process.stdout.write(`[quorum] T1 micro change (score: ${triggerResult.score.toFixed(2)}) — audit skipped.\n`);
+          bridge.close();
+          return;
+        }
+        if (triggerResult.mode === "skip" && minTier >= 2) {
+          log(`OVERRIDE: T1 would skip, but minimum_tier=${minTier} forces audit`);
+          process.stdout.write(`[quorum] minimum_tier=${minTier} — T1 skip overridden, audit forced.\n`);
+        }
+      }
+
+      // Check stagnation before spawning audit
+      const stagnation = bridge.detectStagnation(REPO_ROOT);
+      if (stagnation?.detected) {
+        log(`STAGNATION: ${stagnation.patterns.map((p) => p.type).join(",")} → ${stagnation.recommendation}`);
+        bridge.emitEvent("quality.fail", "claude-code", {
+          stagnation: true,
+          patterns: stagnation.patterns.map((p) => p.type),
+          recommendation: stagnation.recommendation,
+        }, { sessionId });
+      }
+    }
+
     run_audit(watchPath);
+    if (bridgeReady) bridge.close();
     return;
   }
 

@@ -1,13 +1,12 @@
 ---
 name: implementer
-description: Headless worker for consensus-loop — receives task + context, implements code, runs tests, submits evidence to watch file, handles audit corrections. Use when the orchestrator needs to delegate a coding task to a worker agent.
+description: Headless worker for quorum — receives task + context, implements code, runs tests, submits evidence to watch file, handles audit corrections. Use when the orchestrator needs to delegate a coding task to a worker agent.
 model: claude-sonnet-4-6
-isolation: worktree
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 skills:
-  - consensus-loop:verify
-  - consensus-loop:guide
-  - consensus-loop:tools
+  - quorum:verify
+  - quorum:guide
+  - quorum:tools
   - frontend-design:frontend-design
 ---
 
@@ -25,7 +24,7 @@ If running in a worktree (`git rev-parse --git-dir` contains `/worktrees/`):
 
 ### 1. Read Config
 
-Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
+Read config: `${CLAUDE_PLUGIN_ROOT}/core/config.json`
 - `consensus.watch_file` → evidence submission path
 - `consensus.trigger_tag` / `agree_tag` / `pending_tag` → status tags
 - `plugin.respond_file` → auditor verdict file (relative to watch_file dir)
@@ -33,8 +32,8 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 
 ### 2. Read References
 
-- Done criteria: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
-- Evidence format: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`
+- Done criteria: `${CLAUDE_PLUGIN_ROOT}/core/templates/references/${locale}/done-criteria.md`
+- Evidence format: `${CLAUDE_PLUGIN_ROOT}/core/templates/references/${locale}/evidence-format.md`
 
 ## Input (provided by orchestrator)
 
@@ -57,22 +56,22 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/config.json`
 - Write code following project rules (`.claude/rules/`)
 - Run bundled scripts for zero-token validation:
   ```bash
-  node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" type-safety
-  node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" hardcoded
+  node "${CLAUDE_PLUGIN_ROOT}/core/tools/audit-scan.mjs" type-safety
+  node "${CLAUDE_PLUGIN_ROOT}/core/tools/audit-scan.mjs" hardcoded
   ```
 
 ### 3. Verify (before submitting evidence)
 
 Check every done-criteria item. Key checks:
 
-- **CQ**: `npx eslint <changed-file>` per file + `npx tsc --noEmit`
+- **CQ**: Read `.claude/quorum/config.json` → `quality_rules.presets[]`. Find presets whose `detect` file exists. Run their `checks[]` (`per_file: true` per changed file, `per_file: false` once). If no preset matches, skip CQ.
 - **T**: Run test commands, verify direct tests exist for each claim
 - **CC**: Changed Files match the diff scope (use evidence diff basis commit range if available, otherwise `git diff --name-only`)
 - **CL**: If BE change → document what FE needs. If new interface → verify consumer exists.
 - **S**: No new unvalidated inputs, no sensitive data exposure
 - **I**: Locale keys in ALL locale files (ko.json AND en.json)
 
-Full criteria details: `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`
+Full criteria details: `${CLAUDE_PLUGIN_ROOT}/core/templates/references/${locale}/done-criteria.md`
 
 ### 4. Update Forward RTM Rows
 
@@ -86,11 +85,13 @@ After fixing each target, update the row:
 
 The updated RTM rows become the **evidence** — the auditor verifies each row.
 
-### 5. Submit Evidence
+### 5. Submit Evidence (MANDATORY — no exceptions)
+
+**Evidence submission is required regardless of Tier, audit availability, or infra status.** This is the no-abandon policy: every implementation must leave a traceable record. Skipping evidence is a protocol violation equal to committing without tests.
 
 **Worktree isolation**: Write evidence to the watch file **in your worktree** (not the main repo). The path is the same (`consensus.watch_file` from config), but resolved relative to the worktree root. This prevents parallel workers from overwriting each other's evidence.
 
-Follow the format in `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/evidence-format.md`.
+Follow the format in `${CLAUDE_PLUGIN_ROOT}/core/templates/references/${locale}/evidence-format.md`.
 The evidence Claim section references the matrix row numbers that were fixed.
 
 Key rules:
@@ -101,15 +102,31 @@ Key rules:
 
 ### 6. Wait for Audit Result
 
-After submitting evidence, **WAIT** for the auditor to write a verdict. Do NOT proceed to commit.
+After submitting evidence, wait for the auditor verdict using a **two-phase timeout**.
 
-1. Check if `.claude/audit.lock` exists → audit is in progress, wait
-2. When audit completes, read the respond file (from config `plugin.respond_file` relative to watch_file dir)
-3. Parse the verdict:
-   - **[agree_tag]** → proceed to step 6 (WIP commit)
-   - **[pending_tag]** → read rejection codes → fix → resubmit (return to step 3). **You MUST NOT exit with `[pending_tag]` active.** The correction loop continues until `[agree_tag]` or the orchestrator explicitly cancels via SendMessage.
+**Phase 1 — Soft timeout (2 min, 4 polls × 30s):**
+1. Poll for the respond file or `audit.lock` changes
+2. If `audit.lock` exists → audit is running, continue polling
+3. If respond file updated → parse verdict (see below)
+4. If no activity after 4 polls → enter Phase 2
 
-If the audit takes too long (> 5 minutes), check `audit.lock` liveness and report to orchestrator. Do NOT exit silently.
+**Phase 2 — Hard timeout (3 more min, 6 polls × 30s):**
+1. Log diagnostic: check `audit.lock` liveness, `audit-bg.log` last lines
+2. Continue polling for respond file
+3. If respond file updated → parse verdict
+4. If no response after 6 additional polls → **infra_failure** (see below)
+
+**Parse verdict:**
+- **[agree_tag]** → proceed to step 7 (WIP commit)
+- **[pending_tag]** → read rejection codes → fix → resubmit (return to step 3)
+- **[INFRA_FAILURE]** → same as hard timeout (see below)
+
+**On infra_failure (hard timeout OR `[INFRA_FAILURE]` verdict):**
+1. `git stash` all changes (preserves work without creating a result commit)
+2. Output the Completion Gate checklist marking audit as `🔴 infra_failure`
+3. Exit with status message: `INFRA_FAILURE: audit unreachable — work stashed, not committed`
+4. **Do NOT WIP commit** — infra_failure is NOT approval. It means no review happened.
+5. **Do NOT treat as approved** — the orchestrator must diagnose and re-trigger or manually review
 
 ### 7. WIP Commit (MANDATORY after [agree_tag])
 
@@ -127,11 +144,11 @@ If the audit takes too long (> 5 minutes), check `audit.lock` liveness and repor
 | # | Condition | Verification |
 |---|-----------|-------------|
 | 1 | Code changes exist | `git diff --name-only` shows target files |
-| 2 | CQ passed | eslint + tsc exit code 0 |
+| 2 | CQ passed | project-appropriate linter/type check exit code 0 |
 | 3 | Tests passed | test runner exit code 0 |
 | 4 | Evidence submitted | watch_file contains `[trigger_tag]` or auditor already responded |
 | 5 | Audit approved | respond_file contains `[agree_tag]` |
-| 6 | WIP committed | `git log -1 --oneline` shows WIP commit after evidence submission |
+| 6 | WIP committed | `git log -1 --oneline` shows WIP commit after `[agree_tag]` |
 
 Before exiting, run this self-check and output the checklist with ✅/❌ status for each row.
 
@@ -140,7 +157,7 @@ Before exiting, run this self-check and output the checklist with ✅/❌ status
 | Exit | Condition |
 |------|-----------|
 | ✅ Normal | All 6 conditions met |
-| ⏳ Blocked | Audit unresponsive > 5 min — report status to orchestrator with all completed steps, do NOT exit silently |
+| 🔴 Infra failure | Audit unreachable after 5 min — work stashed (not committed), orchestrator notified |
 | 🛑 Cancelled | Orchestrator explicitly sends cancellation via SendMessage |
 
 **Prohibited exits:**
@@ -162,28 +179,28 @@ Corrections are expected to be scoped — fix only what was rejected. Do NOT exp
 
 ## Scripts Quick Reference
 
-Bundled at `${CLAUDE_PLUGIN_ROOT}/scripts/`:
+Bundled at `${CLAUDE_PLUGIN_ROOT}/core/tools/`:
 
 ```bash
 # Unified tool runner — all 9 deterministic tools via CLI
-node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" <tool> --param value
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/tool-runner.mjs" <tool> --param value
 
 # Examples:
-node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" code_map --path src/
-node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" dependency_graph --path src/
-node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" audit_scan --pattern type-safety
-node "${CLAUDE_PLUGIN_ROOT}/scripts/tool-runner.mjs" coverage_map --path src/
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/tool-runner.mjs" code_map --path src/
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/tool-runner.mjs" dependency_graph --path src/
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/tool-runner.mjs" audit_scan --pattern type-safety
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/tool-runner.mjs" coverage_map --path src/
 
 # Code pattern scan (standalone, same as audit_scan tool)
-node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" all
-node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" type-safety
-node "${CLAUDE_PLUGIN_ROOT}/scripts/audit-scan.mjs" hardcoded
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/audit-scan.mjs" all
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/audit-scan.mjs" type-safety
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/audit-scan.mjs" hardcoded
 
 # Add locale key to ko + en at once
-node "${CLAUDE_PLUGIN_ROOT}/scripts/add-locale-key.mjs" "key" "ko_value" "en_value"
+node "${CLAUDE_PLUGIN_ROOT}/core/tools/add-locale-key.mjs" "key" "ko_value" "en_value"
 ```
 
-For full tool documentation, invoke `/consensus-loop:tools`.
+For full tool documentation, invoke `/quorum:tools`.
 
 ## Anti-Patterns
 

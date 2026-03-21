@@ -1,4 +1,4 @@
-# consensus-loop (v2.5.0)
+# consensus-loop (v2.5.1)
 
 Claude Code hook plugin — cross-model audit gate with structural enforcement. edit → audit → agree → retro → commit.
 
