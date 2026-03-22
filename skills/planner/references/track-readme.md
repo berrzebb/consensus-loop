@@ -49,7 +49,7 @@ Data source: `code_map` and `dependency_graph` results at planning time.
 ## Exit Condition
 Verifiable conditions that ALL must be true for this track to be `verified`:
 - [ ] All WB items pass RTM verification
-- [ ] `npx tsc --noEmit` passes
+- [ ] Project-wide checks from `quality_rules.presets` pass
 - [ ] Coverage ≥ 85% on all changed files
 - [ ] API contract consumers confirmed working
 

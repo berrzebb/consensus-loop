@@ -25,9 +25,9 @@
 - [계류] TRACK-1 — 접근 제어 강화
 
 ## 독립 검증 결과
-- 변경 파일 10개 파일별 `npx eslint` 통과.
-- `npx vitest run ...` → 8 files / 120 tests passed.
-- `npx tsc --noEmit` 통과.
+- 변경 파일 10개 파일별 린터 통과.
+- 테스트 러너 → 8 files / 120 tests passed.
+- 타입/컴파일 체크 통과.
 
 ## 최종 판정
 - [계류] TRACK-1 — 접근 제어 강화
@@ -41,7 +41,7 @@
 - `tests/resource.test.ts:L85` — admin 403 미검증
 
 ## 핵심 근거
-- lint·tsc·vitest 모두 통과.
+- 린터·타입체크·테스트 모두 통과.
 - 그러나 GET /api/resource의 claim과 실제 권한이 불일치.
 - 테스트도 기존 member 기대를 유지해 claim을 잠그지 못함.
 
@@ -61,8 +61,8 @@
 - [합의완료] TRACK-1 — 접근 제어 강화
 
 ## 독립 검증 결과
-- 변경 파일 10개 파일별 eslint 통과.
-- vitest 8 files / 120 tests passed.
+- 변경 파일 10개 파일별 린터 통과.
+- 테스트 러너 8 files / 120 tests passed.
 - claim과 코드 일치 확인.
 
 ## 최종 판정

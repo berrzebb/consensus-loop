@@ -41,6 +41,10 @@ Implemented EvalCase contract (EV-1) and local runner (EV-2). Both traced to tes
 
 ### Test Command
 ```bash
+# Use project-appropriate commands. Examples:
+# JS/TS: npx eslint <files> + npx vitest run <tests> + npx tsc --noEmit
+# Python: ruff check <files> + python -m pytest <tests>
+# Rust: cargo clippy + cargo test
 npx eslint src/evals/contracts.ts src/evals/loader.ts src/evals/runner.ts
 npx vitest run tests/evals/loader.test.ts tests/evals/runner.test.ts
 npx tsc --noEmit

@@ -27,7 +27,7 @@ try { payload = JSON.parse(raw); } catch { /* no valid payload */ }
 const agentName = payload.agent_name || "unknown";
 
 // ── Load i18n lazily ─────────────────────────────────────
-const { t } = await import("./context.mjs");
+const { t } = await import("../../core/context.mjs");
 
 // ── Check deferred retro marker ──────────────────────────
 let retroDeferred = false;
@@ -70,3 +70,26 @@ if (retroDeferred && retroContext) {
 if (lines.length > 0) {
   process.stdout.write(lines.join("\n"));
 }
+
+// ── Emit agent.complete event to EventStore for daemon visibility ──
+try {
+  const bridge = await import("../../core/bridge.mjs");
+  const { REPO_ROOT } = await import("../../core/context.mjs");
+  await bridge.init(REPO_ROOT);
+  bridge.emitEvent("agent.complete", "claude-code", {
+    name: agentName,
+    retroDeferred,
+  });
+  bridge.close();
+} catch { /* bridge non-critical */ }
+
+// ── Auto-update RTM statuses based on current file state ──
+try {
+  const { REPO_ROOT } = await import("../../core/context.mjs");
+  const { updateAllRtms } = await import("../../core/rtm-updater.mjs");
+  const results = updateAllRtms(REPO_ROOT);
+  if (results.length > 0) {
+    const total = results.reduce((s, r) => s + r.updated, 0);
+    process.stderr.write(`[quorum] RTM auto-updated: ${total} row(s) across ${results.length} file(s)\n`);
+  }
+} catch (e) { process.stderr.write(`[quorum] RTM update warning: ${e.message}\n`); }

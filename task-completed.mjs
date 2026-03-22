@@ -131,6 +131,25 @@ if (activePresets.length > 0) {
   console.error("[task-completed] No quality_rules presets matched — skipping CQ checks");
 }
 
+// ── No-abandon gate: evidence must exist before task completion ──
+try {
+  const configPath = resolve(REPO_ROOT, ".claude", "quorum", "config.json");
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, "utf8"));
+    const watchFile = cfg.consensus?.watch_file ?? "docs/feedback/claude.md";
+    const evidencePath = resolve(REPO_ROOT, watchFile);
+    if (existsSync(evidencePath)) {
+      const evidence = readFileSync(evidencePath, "utf8");
+      const triggerTag = cfg.consensus?.trigger_tag ?? "[REVIEW_NEEDED]";
+      if (!evidence.includes(triggerTag) && !evidence.includes("[APPROVED]") && !evidence.includes("[INFRA_FAILURE]")) {
+        failures.push("[NO-ABANDON] Evidence file exists but contains no submission tag. Submit evidence before completing task.");
+      }
+    } else {
+      failures.push("[NO-ABANDON] Evidence file not found. Submit evidence to watch_file before completing task.");
+    }
+  }
+} catch { /* config read error — skip gate */ }
+
 // ── Verdict ──────────────────────────────────────────────────
 if (failures.length > 0) {
   const feedback = [

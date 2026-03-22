@@ -64,11 +64,7 @@ Read config: `${CLAUDE_PLUGIN_ROOT}/core/config.json`
 
 Check every done-criteria item. Key checks:
 
-- **CQ**: Run project-appropriate linting/type checks:
-  - JS/TS (package.json exists): `npx eslint <changed-file>` + `npx tsc --noEmit` (if tsconfig.json exists)
-  - Python (pyproject.toml or setup.py exists): `python -m pytest` + linter if configured
-  - Rust (Cargo.toml exists): `cargo check` + `cargo clippy`
-  - If none match, skip CQ
+- **CQ**: Read `.claude/quorum/config.json` → `quality_rules.presets[]`. Find presets whose `detect` file exists. Run their `checks[]` (`per_file: true` per changed file, `per_file: false` once). If no preset matches, skip CQ.
 - **T**: Run test commands, verify direct tests exist for each claim
 - **CC**: Changed Files match the diff scope (use evidence diff basis commit range if available, otherwise `git diff --name-only`)
 - **CL**: If BE change → document what FE needs. If new interface → verify consumer exists.
@@ -89,7 +85,9 @@ After fixing each target, update the row:
 
 The updated RTM rows become the **evidence** — the auditor verifies each row.
 
-### 5. Submit Evidence
+### 5. Submit Evidence (MANDATORY — no exceptions)
+
+**Evidence submission is required regardless of Tier, audit availability, or infra status.** This is the no-abandon policy: every implementation must leave a traceable record. Skipping evidence is a protocol violation equal to committing without tests.
 
 **Worktree isolation**: Write evidence to the watch file **in your worktree** (not the main repo). The path is the same (`consensus.watch_file` from config), but resolved relative to the worktree root. This prevents parallel workers from overwriting each other's evidence.
 
@@ -121,13 +119,14 @@ After submitting evidence, wait for the auditor verdict using a **two-phase time
 **Parse verdict:**
 - **[agree_tag]** → proceed to step 7 (WIP commit)
 - **[pending_tag]** → read rejection codes → fix → resubmit (return to step 3)
+- **[INFRA_FAILURE]** → same as hard timeout (see below)
 
-**On infra_failure (hard timeout exceeded):**
+**On infra_failure (hard timeout OR `[INFRA_FAILURE]` verdict):**
 1. `git stash` all changes (preserves work without creating a result commit)
 2. Output the Completion Gate checklist marking audit as `🔴 infra_failure`
-3. Exit with status message: `INFRA_FAILURE: audit unreachable after 5min — work stashed, not committed`
-4. **Do NOT WIP commit** — timeout work is a recovery artifact, not an experiment result
-5. **Do NOT auto-approve** — the orchestrator must diagnose and re-trigger
+3. Exit with status message: `INFRA_FAILURE: audit unreachable — work stashed, not committed`
+4. **Do NOT WIP commit** — infra_failure is NOT approval. It means no review happened.
+5. **Do NOT treat as approved** — the orchestrator must diagnose and re-trigger or manually review
 
 ### 7. WIP Commit (MANDATORY after [agree_tag])
 

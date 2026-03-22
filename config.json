@@ -51,6 +51,10 @@
       "reset_criteria_text":  "The scope must confirm that `{focus}` corrections and related lint/test re-passes are verified before promoting to `{agree_tag}`."
     }
   },
+  "experiment": {
+    "_readme": "Experiment-mode settings. minimum_tier forces all WBs to at least this tier (0=off, 2=evidence+audit required).",
+    "minimum_tier": 0
+  },
   "quality_rules": {
     "_readme": "Language-aware quality rules. Each preset is selected by 'detect' file presence. 'precedence' controls evaluation order for monorepos. 'overrides' in project config.json can replace or extend these.",
     "presets": [

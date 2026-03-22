@@ -25,12 +25,10 @@ Detects: **implementation gaps, missing tests, unconnected outputs**
 ```markdown
 # Forward RTM: [track-name]
 
-| Req ID | Description | Track | Design Ref | File | Exists | Impl | Test Case | Test Result | Connected | Status |
-|--------|-------------|-------|------------|------|--------|------|-----------|-------------|-----------|--------|
-| EV-1 | EvalCase contract | evaluation-pipeline | EV/README | src/evals/types.ts | ❌ | — | — | — | EV-2:runner.ts | open |
-| EV-1 | fixture loader | evaluation-pipeline | EV/README | src/evals/loaders.ts | ❌ | — | — | — | EV-2:runner.ts | open |
-| EV-1 | loader contract test | evaluation-pipeline | EV/README | tests/evals/loaders.test.ts | ❌ | — | self | — | — | open |
-| EV-2 | local runner | evaluation-pipeline | EV/README | src/evals/runner.ts | ❌ | — | — | — | EG-5:regression | open |
+| Req ID | Description | Track | Design Ref | File | Exists | Impl | Test Case | Test Result | Connected | Invariant | Inv Test | Status |
+|--------|-------------|-------|------------|------|--------|------|-----------|-------------|-----------|-----------|----------|--------|
+| EV-1 | EvalCase contract | evaluation-pipeline | EV/README | src/evals/types.ts | ❌ | — | — | — | EV-2:runner.ts | — | — | open |
+| FR-17 | hold once per turn | ui | UI/README | ui/panels.py | ✅ | ✅ | tests/test_panels.py | ✓ | — | hold once per turn | ❌ existence only | invariant-gap |
 ```
 
 ### Column Definitions
@@ -47,8 +45,11 @@ Detects: **implementation gaps, missing tests, unconnected outputs**
 | **Test Case** | scout → implementer | Test file:line, `self` if row IS a test, — if absent |
 | **Test Result** | implementer | ✓ pass / ✗ fail / — pending |
 | **Connected** | scout | Downstream consumer `Req ID:file` via import tracing |
-| **Coverage** | coverage_map tool | stmt% / br% / fn% from vitest coverage JSON |
-| **Status** | all | open → wip → fixed → verified |
+| **Coverage** | coverage_map tool | stmt% / br% / fn% from test coverage JSON |
+| **Invariant** | test-strategy.md | Core invariant for this row. `—` = not applicable |
+| **Inv Test** | scout → auditor | ✅ semantic assertion exists / ⚠️ existence only / ❌ missing / — N/A |
+| **Runtime** | scout → auditor | ✅ consumed at runtime / ⚠️ instantiated only / ❌ unwired / — N/A |
+| **Status** | all | open → wip → fixed → verified / invariant-gap / **integration-gap** (impl exists, runtime unwired) |
 
 ### Impl Status Definitions
 

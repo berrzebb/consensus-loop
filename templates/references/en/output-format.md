@@ -25,9 +25,9 @@
 - [pending] TRACK-1 — Access control hardening
 
 ## Independent Verification
-- Per-file `npx eslint` on 10 changed files: all passed.
-- `npx vitest run ...` → 8 files / 120 tests passed.
-- `npx tsc --noEmit` passed.
+- Per-file linter on 10 changed files: all passed.
+- Test runner → 8 files / 120 tests passed.
+- Type/compile check passed.
 
 ## Final Verdict
 - [pending] TRACK-1 — Access control hardening
@@ -41,7 +41,7 @@
 - `tests/resource.test.ts:L85` — missing admin 403 verification
 
 ## Key Evidence
-- Lint, tsc, vitest all passed.
+- Linter, type check, tests all passed.
 - However, GET /api/resource claim vs actual permission mismatch.
 - Tests retain old member expectation, failing to lock the claim.
 
@@ -59,8 +59,8 @@
 - [agreed] TRACK-1 — Access control hardening
 
 ## Independent Verification
-- Per-file eslint on 10 files: passed.
-- vitest 8 files / 120 tests passed.
+- Per-file linter on 10 files: passed.
+- Test runner 8 files / 120 tests passed.
 - Claim-code alignment confirmed.
 
 ## Final Verdict

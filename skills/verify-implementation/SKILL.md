@@ -1,14 +1,14 @@
 ---
-name: consensus-loop:verify
-description: "Run all done-criteria checks (CQ/T/CC/CL/S/I/FV/CV) and produce a pass/fail verification report. Use after implementing code, before submitting evidence to the consensus-loop audit."
+name: quorum:verify
+description: "Run all done-criteria checks (CQ/T/CC/CL/S/I/FV/CV) and produce a pass/fail verification report. Use after implementing code, before submitting evidence to the quorum audit."
 argument-hint: "[optional: specific category - CQ, T, CC, CL, S, I, FV, CV]"
 model: claude-sonnet-4-6
-allowed-tools: Read, Grep, Glob, Bash(npx *), Bash(node *), Bash(git diff *), Bash(git status *), Bash(cat *), Bash(ls *)
+allowed-tools: Read, Grep, Glob, Bash(npx *), Bash(node *), Bash(python *), Bash(cargo *), Bash(go *), Bash(ruff *), Bash(git diff *), Bash(git status *), Bash(cat *), Bash(ls *)
 ---
 
 # Implementation Verification
 
-Run all done-criteria checks before evidence submission. Criteria from `${CLAUDE_PLUGIN_ROOT}/templates/references/${locale}/done-criteria.md`.
+Run all done-criteria checks before evidence submission. Criteria from `${CLAUDE_PLUGIN_ROOT}/core/templates/references/${locale}/done-criteria.md`.
 
 ## Execution Context
 
@@ -23,7 +23,7 @@ In headless mode, do NOT ask "should I fix this?" — output the report and exit
 
 | # | Category | Key Checks | Tool |
 |---|----------|-----------|------|
-| 1 | Code Quality (CQ) | `npx eslint <file>`, `npx tsc --noEmit`, audit-scan type-safety | Bash |
+| 1 | Code Quality (CQ) | Per-file + project-wide checks from `quality_rules.presets`, audit-scan type-safety | Bash |
 | 2 | Test (T) | Execute evidence test commands, check direct tests exist | Bash |
 | 3 | Claim-Code (CC) | Diff scope vs Changed Files | Bash, Grep |
 | 4 | Cross-Layer (CL) | BE→FE contracts, consumer existence | Read, Grep |

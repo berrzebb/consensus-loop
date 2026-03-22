@@ -15,9 +15,9 @@
 
 ## Verification Order
 
-1. **Lint first** — `npx eslint <modified files>` per-file, must pass
+1. **Lint first** — run per-file checks from `quality_rules.presets` in `.claude/quorum/config.json`
 2. **Tests** — Run existing tests + add new tests as needed
-3. **tsc** — `npx tsc --noEmit` must pass
+3. **Type check** — run project-wide checks from `quality_rules.presets` (skip if no matching preset)
 
 ## Evidence Submission
 
